@@ -47,11 +47,12 @@ try {
   assert.deepEqual(await bagLines({}, {metadata}),rows);
   const session={id:'cs_test',payment_status:'paid',metadata,payment_intent:'pi_test'};
   let calls=0;
-  const db={rpc:async(name,args)=>{calls++;assert.equal(name,'record_paid_order'); assert.equal(args.p_session_id,'cs_test'); assert.equal(args.p_rows.length,20); return {data:20,error:null};}};
+  const noProducts={from:()=>({select:()=>({in:async()=>({data:[],error:null})})})};
+  const db={...noProducts,rpc:async(name,args)=>{calls++;assert.equal(name,'record_paid_order'); assert.equal(args.p_session_id,'cs_test'); assert.equal(args.p_rows.length,20); return {data:20,error:null};}};
   assert.deepEqual(await recordOrder({},db,session),{recorded:20});
   await assert.rejects(recordOrder({},db,{...session,payment_status:'unpaid'}),/not paid/);
   assert.equal(calls,1);
-  await assert.rejects(recordOrder({}, {rpc:async()=>({error:{message:'database unavailable'}})}, session),/database unavailable/);
+  await assert.rejects(recordOrder({}, {...noProducts,rpc:async()=>({error:{message:'database unavailable'}})}, session),/database unavailable/);
 
   // ─── Goods ────────────────────────────────────────────────────────────────
   const {GOODS_SEED} = await import(pathToFileURL(path.join(temp,'api/_lib/goods.js')));
@@ -105,7 +106,15 @@ try {
   const goodsRows=[{p:'gtest',v:'S',q:1,e:null,s:0,u:32900},{f:'test',k:'perf50',q:1,e:null,s:50,u:4700}];
   const goodsSession={id:'cs_goods',payment_status:'paid',metadata:chunkBag(goodsRows),payment_intent:'pi_goods'};
   let captured=null;
-  const goodsDb={rpc:async(_n,args)=>{captured=args.p_rows; return {data:args.p_rows.length,error:null};}};
+  const queued=[];
+  const goodsDb={
+    from:()=>({select:()=>({in:async()=>({data:[{id:'gtest',name:'Test Dress',variants:[{code:'S',supplierSku:'SUP-DRESS-S'},{code:'M'}]}],error:null})})}),
+    rpc:async(n,args)=>{
+      if(n==='queue_supplier_order'){queued.push(args); return {data:true,error:null};}
+      if(n==='settle_supplier_order'){return {data:null,error:null};}
+      captured=args.p_rows; return {data:args.p_rows.length,error:null};
+    },
+  };
   assert.deepEqual(await recordOrder({},goodsDb,goodsSession),{recorded:2});
   assert.equal(captured[0].product_id,'gtest');
   assert.equal(captured[0].variant,'S');
@@ -116,5 +125,41 @@ try {
   assert.equal(captured[1].product_id,null);
   assert.equal(captured[1].format,'perf50');
 
-  console.log('PASS: bundle isolation, quantities, regular prices, multi-chunk baskets, paid-only recording, RPC failures, goods pricing and catalogue parity.');
+
+  // ─── The supplier hand-off ────────────────────────────────────────────────
+  const {buildSupplierPayload, canDispatch, handOffToSupplier} =
+    await import(pathToFileURL(path.join(temp,'api/_lib/supplier.js')));
+
+  // Recording a paid order queues the dropshipped part of it, and only that.
+  assert.equal(queued.length,1,'a goods order should queue exactly one supplier order');
+  assert.equal(queued[0].p_order_ref,'cs_goods');
+  assert.equal(queued[0].p_payload.lines.length,1,'the fragrance line must not go to the supplier');
+  assert.equal(queued[0].p_payload.lines[0].productId,'gtest');
+  assert.equal(queued[0].p_payload.lines[0].variant,'S');
+  // The SKU and the name come from the catalogue, never from the browser.
+  assert.equal(queued[0].p_payload.lines[0].sku,'SUP-DRESS-S');
+  assert.equal(queued[0].p_payload.lines[0].name,'Test Dress');
+  // Nothing the supplier is sent carries a price we charged the customer.
+  assert.ok(!JSON.stringify(queued[0].p_payload).includes('32900'),'the supplier payload must not carry retail prices');
+
+  const addr={name:'A Buyer',country:'AU'};
+  const stubDb={from:()=>({select:()=>({in:async()=>({data:[{id:'gtest',name:'Test Dress',variants:[{code:'M',supplierSku:'SUP-M'}]}],error:null})})})};
+  // A fragrance-only order has nothing to dropship; that is not an error.
+  assert.equal(await buildSupplierPayload(stubDb,{orderRef:'cs_1',lines:[],currency:'AUD',email:'a@b.co',address:addr}),null);
+  // A variant with no SKU still goes, identified by its code.
+  const noSku=await buildSupplierPayload(stubDb,{orderRef:'cs_2',lines:[{productId:'gtest',variant:'XL',qty:1,engraving:null}],currency:'AUD',email:'a@b.co',address:addr});
+  assert.equal(noSku.lines[0].sku,undefined);
+  assert.equal(noSku.lines[0].variant,'XL');
+  // A product missing from the catalogue is still ordered, under its id.
+  const unknown=await buildSupplierPayload(stubDb,{orderRef:'cs_3',lines:[{productId:'ghost',variant:'M',qty:1,engraving:null}],currency:'AUD',email:'a@b.co',address:addr});
+  assert.equal(unknown.lines[0].name,'ghost');
+
+  // With no endpoint configured nothing is posted anywhere.
+  assert.equal(canDispatch(),false,'dispatch must be off until an endpoint is configured');
+
+  // The hand-off can never throw: the customer has already paid.
+  const brokenDb={from:()=>({select:()=>({in:async()=>{throw new Error('database on fire');}})}),rpc:async()=>({error:{message:'nope'}})};
+  await handOffToSupplier(brokenDb,{orderRef:'cs_4',lines:[{productId:'gtest',variant:'M',qty:1,engraving:null}],currency:'AUD',email:'a@b.co',address:addr});
+
+  console.log('PASS: bundle isolation, quantities, regular prices, multi-chunk baskets, paid-only recording, RPC failures, goods pricing, catalogue parity and the supplier hand-off.');
 } finally { await fs.rm(temp,{recursive:true,force:true}); }

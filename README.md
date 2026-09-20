@@ -81,10 +81,12 @@ These lines are **bought, not browsed**: they go through the same bag, the same
 live Australia Post quote and the same Stripe Checkout as a bottle, and land in
 the same `commits` table. A bag can hold both families at once.
 
-> **No photography yet.** Each category has a drawn silhouette
-> (`GoodsArt.tsx`) filled with the product's own two tones, so a grid reads as
-> a range of pieces rather than a wall of placeholder boxes. Set `image_url` on
-> a product and the photograph takes over with no other change.
+> **Photography.** A dropshipped line arrives with the supplier's own images
+> (see [Dropshipping](#dropshipping-alidrop)) and renders a gallery. The
+> house-made range has not been shot, so each category has a drawn silhouette
+> (`GoodsArt.tsx`) filled with the product's own two tones — a grid reads as a
+> range of pieces rather than a wall of placeholder boxes, and the drawing is
+> also what stands in if a supplier's CDN drops an image.
 
 - **Navigation** — `SHOP` (mega-menu: one column per department, each heading
   its own page and listing its categories) · `WOMEN` · `MEN` · `JEWELLERY` ·
@@ -282,6 +284,69 @@ Earlier foundations, still in place:
   `enroll_subscriber` RPC) and unlocks VIP-only batches.
 - **Footer** + film-grain overlay, responsive breakpoints, and reduced-motion support.
 
+## Dropshipping (AliDrop)
+
+**AliDrop publishes no developer API.** It is distributed as an app for
+Shopify, WooCommerce and Wix, and syncs products *into* a store on one of those
+platforms; there is no documented REST surface a custom storefront can call.
+Some third-party pages claim otherwise, but none of them link to an endpoint.
+So nothing here is coded against a guessed API — the integration is built in
+two halves, one that works today and one that switches on the moment you have
+credentials.
+
+### Products and photography, in
+
+AliDrop exports a **Shopify product CSV**, which is the published interchange
+format the whole chain speaks. The importer reads it:
+
+```bash
+node scripts/import_alidrop.mjs export.csv --department womens --dry-run
+node scripts/import_alidrop.mjs export.csv --department beauty --margin 2.4
+node scripts/import_alidrop.mjs export.csv --department mens --push
+```
+
+It folds the multi-row product format back into products, keeps the images in
+the supplier's own order, carries a per-variant photograph where the export has
+one, reads stock and cost per variant, and prices retail from cost (`--margin`,
+default ×2.5, rounded up by `--round`, default $5). Without `--push` it writes
+an upsert migration; with it, it writes straight to Supabase using the service
+key.
+
+Two behaviours worth knowing. Products are matched on
+`(supplier, supplier_product_id)`, so **re-importing updates a piece rather
+than duplicating it** — run it again whenever AliDrop refreshes stock or price.
+And the category guess is deliberately conservative: anything it cannot place
+confidently is **reported and skipped**, not filed somewhere wrong. Pass
+`--category` to place a whole file by hand.
+
+A dropshipped product renders its real photography — a gallery with thumbnails
+on the product page, the chosen shade swapping the main shot, the first image
+on cards and in the bag. Where a piece has no photograph the drawn silhouette
+still stands in, so a half-imported catalogue never shows holes.
+
+### Orders, out
+
+Every paid order containing a dropshipped line is written to `supplier_orders`
+the moment it is recorded — queued first, sent second, and never able to fail
+the payment: the money is already taken by then, so a supplier being down
+leaves a row to retry rather than an order that vanished.
+
+**Admin Console → Dropship** is the working screen. With no endpoint
+configured it exports the queue as CSV to upload or paste into AliDrop, and you
+mark each order off as you place it. Set `SUPPLIER_API_BASE` and
+`SUPPLIER_ORDER_PATH` (see `.env.example`) and the same queue posts itself
+instead, with failures retried from the same screen.
+
+The HTTP half is assembled entirely from environment variables — base, path,
+method, auth header, auth scheme, and where the supplier's order id sits in the
+response — so pointing it at a real endpoint is configuration, not a code
+change. `SUPPLIER_DRY_RUN=1` queues and exports without ever posting.
+
+What the supplier is sent is built on the server from the paid order: the
+dropshipped lines only, with names and SKUs read from the `products` table.
+Retail prices are never included — what you charged the customer is not the
+supplier's business.
+
 ## Contrast audit
 
 The palette was reversed out of a dark comp, and a reversal is where contrast
@@ -332,6 +397,7 @@ src/
 │   ├── scentai.ts         The six AI capabilities + a local fallback for each
 │   ├── scentLearning.ts   Signals, the merge maths, and what changed
 │   ├── goods.ts           Departments, categories, the goods seed, variant pricing
+│   ├── dropship.ts        The supplier queue, from the admin console's side
 │   ├── goodsStore.ts      useProducts() — the products table, with the seed as fallback
 │   ├── bag.ts             Bag lines (fragrance | goods), Discovery Box picks (localStorage)
 │   ├── bagRows.ts         Resolves a bag line against either catalogue for display
@@ -366,6 +432,8 @@ src/
         └── theme.ts                  Palette and surfaces for the experience
 api/
 ├── _lib/goods.ts          Server mirror of the goods catalogue (pricing, stock, weights)
+├── _lib/supplier.ts       The dropship hand-off: payload, queue, config-driven transport
+├── supplier/orders.ts     Admin-only: the queue, its CSV, dispatch and mark-off
 ├── chat.ts                Vercel serverless proxy → Claude (streams the concierge reply)
 ├── scent-ai.ts            The Scent DNA AI layer — six operations, one cached prefix
 └── conceive.ts            Vercel serverless → Claude structured output (AI fragrance conception)
@@ -411,6 +479,7 @@ as ordered migrations under `supabase/migrations/`:
 | `fragrances` | Catalogue (53 scents); columns mirror the `Fragrance` type 1:1, with per-size pricing (`price_10ml_cents` / `_30ml_` / `_50ml_`). Public read. |
 | `products` | The goods catalogue — clothing, jewellery, cosmetics, watches. Columns mirror the `Product` type, with the SKUs as a `variants` JSON array (`{code,label,price?,stock,swatch?}`). Public read, service-role write. Seeded by `0033_goods_seed.sql`, which is generated from `src/lib/goods.ts` by `scripts/generate_goods_seed.mjs` so the stored rows and the app's fallback seed cannot drift. |
 | `commits` | Orders. A row points at **either** a fragrance (`fragrance_id` + `format`) **or** a product (`product_id` + `variant`) — a check constraint enforces exactly one, so one table still serves the account page, the staff desk, shipments and the admin console. Anyone may insert; users read their own. |
+| `supplier_orders` | The dropship queue: one row per paid order with a dropshipped line, holding exactly what the supplier would be sent, plus its status, attempts and last error. Service role only — it holds customer addresses. |
 | `subscribers` | General list + `vip` tier (gates VIP-only batches). |
 | `scent_profiles` | Scentprints from `/discover`, keyed by a six-character share code: the sixteen dimensions, the eight behavioural attributes, the occasions chosen, the shelf (`wearer`), and an email only when the visitor asked for their result. Read through `get_scentprint` (which never returns the email); customers read their own rows, admins read all. |
 | `sync_fragrance_committed()` trigger | Keeps `fragrances.committed` in step as commits are inserted / released. |

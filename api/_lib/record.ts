@@ -4,6 +4,7 @@
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadCatalogue, loadGoods, memberPrice, CURRENCY } from "./stripe.js";
+import { handOffToSupplier } from "./supplier.js";
 import { FORMATS, type FormatKey } from "./catalogue.js";
 
 /**
@@ -145,6 +146,28 @@ export async function recordOrder(stripe: Stripe, db: SupabaseClient, session: S
   }));
   const { data, error } = await db.rpc("record_paid_order", { p_session_id: session.id, p_rows: rows });
   if (error) throw new Error(error.message);
+
+  // The order is recorded; anything dropshipped in it now has to reach the
+  // supplier. Queued first and posted after, and never allowed to throw — the
+  // customer has paid, and a supplier outage must not undo that.
+  const meta = session.metadata ?? {};
+  await handOffToSupplier(db, {
+    orderRef: session.id,
+    lines: lines.filter(isGoods).map((l) => ({ productId: l.p as string, variant: l.v as string, qty: l.q, engraving: l.e })),
+    currency: (session.currency ?? CURRENCY).toUpperCase(),
+    email: meta.contact_email || meta.user_email || session.customer_details?.email || "",
+    address: {
+      name: meta.delivery_name || session.customer_details?.name || "",
+      phone: meta.delivery_phone || undefined,
+      line1: meta.ship_address || session.customer_details?.address?.line1 || undefined,
+      city: meta.ship_city || session.customer_details?.address?.city || undefined,
+      region: meta.ship_region || session.customer_details?.address?.state || undefined,
+      postcode: meta.ship_postcode || session.customer_details?.address?.postal_code || undefined,
+      country: session.customer_details?.address?.country || "AU",
+      notes: meta.delivery_notes || undefined,
+    },
+  });
+
   return { recorded: Number(data ?? 0) };
 }
 

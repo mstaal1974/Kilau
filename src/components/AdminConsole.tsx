@@ -27,6 +27,7 @@ import { demoShipments, subscribeShipments } from "../lib/catalogue";
 import ScentRequests from "./ScentRequests";
 import AdminSubscriptions from "./AdminSubscriptions";
 import AdminMarketing from "./AdminMarketing";
+import AdminDropship from "./AdminDropship";
 
 interface AdminConsoleProps {
   fragrances: Fragrance[];
@@ -64,7 +65,7 @@ const BLANK: Fragrance = {
 };
 
 export default function AdminConsole({ fragrances, configured, onReload, demoCommits }: AdminConsoleProps) {
-  const [tab, setTab] = useState<"catalogue" | "matrix" | "fulfillment" | "requests" | "subscriptions" | "marketing">("catalogue");
+  const [tab, setTab] = useState<"catalogue" | "matrix" | "fulfillment" | "dropship" | "requests" | "subscriptions" | "marketing">("catalogue");
 
   return (
     <main data-screen-label="Admin" style={{ maxWidth: 1340, margin: "0 auto", padding: "48px 32px 90px" }}>
@@ -79,7 +80,7 @@ export default function AdminConsole({ fragrances, configured, onReload, demoCom
       )}
 
       <div style={{ display: "flex", gap: 22, margin: "28px 0 30px", borderBottom: "1px solid #e4ddd0" }}>
-        {(["catalogue", "matrix", "fulfillment", "subscriptions", "requests", "marketing"] as const).map((t) => (
+        {(["catalogue", "matrix", "fulfillment", "dropship", "subscriptions", "requests", "marketing"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -96,7 +97,7 @@ export default function AdminConsole({ fragrances, configured, onReload, demoCom
               fontWeight: 600,
             }}
           >
-            {t === "catalogue" ? "Catalogue & Inventory" : t === "matrix" ? "Product Matrix" : t === "fulfillment" ? "Fulfillment" : t === "subscriptions" ? "Monthly Pour" : t === "requests" ? "Requests" : "Marketing"}
+            {t === "catalogue" ? "Catalogue & Inventory" : t === "matrix" ? "Product Matrix" : t === "fulfillment" ? "Fulfillment" : t === "dropship" ? "Dropship" : t === "subscriptions" ? "Monthly Pour" : t === "requests" ? "Requests" : "Marketing"}
           </button>
         ))}
       </div>
@@ -120,6 +121,8 @@ export default function AdminConsole({ fragrances, configured, onReload, demoCom
         <FormatMatrix fragrances={fragrances} configured={configured} onReload={onReload} />
       ) : tab === "fulfillment" ? (
         <Fulfillment fragrances={fragrances} configured={configured} demoCommits={demoCommits} />
+      ) : tab === "dropship" ? (
+        <AdminDropship />
       ) : tab === "subscriptions" ? (
         <AdminSubscriptions fragrances={fragrances} configured={configured} />
       ) : tab === "requests" ? (

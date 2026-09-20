@@ -12,7 +12,7 @@
 // change — `<GoodsImage>` below prefers the photograph whenever there is one.
 
 import { useState } from "react";
-import type { Product } from "../../lib/goods";
+import { type Product, imageFor, imagesOf, variantOf } from "../../lib/goods";
 
 /** Which silhouette a product gets, from its category. */
 function shapeFor(categoryId: string): Shape {
@@ -213,28 +213,120 @@ export function GoodsArt({ product, height = 300 }: { product: Product; height?:
 /**
  * Photography when the product has it, the drawing when it does not — and the
  * drawing again if the photograph fails to load, so a broken path never leaves
- * a hole in the grid.
+ * a hole in the grid. That last part matters more for a dropshipped line than
+ * a house-made one: the images belong to somebody else's CDN and can go away
+ * without telling us.
+ *
+ * `src` overrides the product's own first image, which is how the gallery and
+ * the variant picker show a different photograph of the same product.
  */
 export default function GoodsImage({
   product,
+  src,
   height = 300,
   objectPosition = "center",
+  objectFit = "cover",
+  alt,
 }: {
   product: Product;
+  src?: string | null;
   height?: number | string;
   objectPosition?: string;
+  objectFit?: "cover" | "contain";
+  alt?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  if (!product.imageUrl || failed) return <GoodsArt product={product} height={height} />;
+  const chosen = src ?? imagesOf(product)[0] ?? null;
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!chosen || failed === chosen) return <GoodsArt product={product} height={height} />;
   return (
     <div style={{ height, width: "100%", overflow: "hidden", background: "#f4f0e8" }}>
       <img
-        src={product.imageUrl}
-        alt={product.name}
+        src={chosen}
+        alt={alt ?? product.name}
         loading="lazy"
-        onError={() => setFailed(true)}
-        style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition, display: "block" }}
+        onError={() => setFailed(chosen)}
+        referrerPolicy="no-referrer"
+        style={{ width: "100%", height: "100%", objectFit, objectPosition, display: "block" }}
       />
     </div>
   );
+}
+
+/**
+ * The product page's picture: one large frame and a strip of thumbnails, or
+ * nothing at all beyond the drawing when the piece has not been shot. Choosing
+ * a variant that has its own photograph moves the gallery to it — on a
+ * lipstick the shade *is* the photograph — which is why `selected` is a prop
+ * rather than state owned here.
+ */
+export function GoodsGallery({ product, selected, height = 560 }: { product: Product; selected?: string; height?: number }) {
+  const gallery = imagesOf(product);
+  const variantImage = selected ? variantOf(product, selected)?.image ?? null : null;
+  const [picked, setPicked] = useState<string | null>(null);
+
+  // A variant's own photograph wins until the shopper taps a thumbnail, and
+  // choosing a different variant hands control back to it.
+  const [lastVariant, setLastVariant] = useState(selected);
+  if (selected !== lastVariant) {
+    setLastVariant(selected);
+    if (picked !== null) setPicked(null);
+  }
+  // A supplier's CDN can drop an image without telling us. The main frame
+  // already falls back to the drawing; a thumbnail has nothing to fall back to,
+  // so a broken one leaves the strip rather than sitting there as a torn-page
+  // icon.
+  const [broken, setBroken] = useState<string[]>([]);
+
+  const shown = picked ?? variantImage ?? gallery[0] ?? null;
+  // The variant's shot belongs in the strip even when it is not in `images`.
+  const thumbs = (variantImage && !gallery.includes(variantImage) ? [variantImage, ...gallery] : gallery).filter(
+    (src) => !broken.includes(src),
+  );
+
+  return (
+    <div>
+      <div style={{ border: "1px solid #e4ddd0", background: "#ffffff" }}>
+        <GoodsImage product={product} src={shown} height={height} objectFit="cover" />
+      </div>
+      {thumbs.length > 1 && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          {thumbs.map((src, i) => {
+            const active = src === shown;
+            return (
+              <button
+                key={src}
+                onClick={() => setPicked(src)}
+                aria-label={`View image ${i + 1} of ${thumbs.length}`}
+                aria-pressed={active}
+                style={{
+                  width: 66,
+                  height: 82,
+                  padding: 0,
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  background: "#ffffff",
+                  border: `1px solid ${active ? "#8a6215" : "#9c9078"}`,
+                  outlineOffset: 2,
+                }}
+              >
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={() => setBroken((b) => (b.includes(src) ? b : [...b, src]))}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", opacity: active ? 1 : 0.82 }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A small square of the piece: its photograph if there is one, else the drawing. */
+export function GoodsThumb({ product, variant, height = 76 }: { product: Product; variant?: string; height?: number }) {
+  return <GoodsImage product={product} src={imageFor(product, variant)} height={height} />;
 }

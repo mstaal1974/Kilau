@@ -141,6 +141,14 @@ export interface Variant {
   stock: number;
   /** A shade's colour, for the swatch. Deep enough to read on paper. */
   swatch?: string;
+  /**
+   * The photograph of this variant, when the supplier ships one. Picking a
+   * shade should change the picture — on a lipstick or a strap the variant is
+   * the only thing the photograph is about.
+   */
+  image?: string;
+  /** The supplier's own SKU for this variant, sent back when ordering it. */
+  supplierSku?: string;
 }
 
 export type GoodsStatus = "live" | "coming_soon" | "hidden";
@@ -171,10 +179,56 @@ export interface Product {
    */
   hue: string;
   shade: string;
-  /** Uploaded photography, once there is any. */
+  /**
+   * Photography, in the order it is shown. The first is the one a card uses.
+   * Empty means the drawn silhouette stands in, which is the state the house
+   * range is in until it is shot.
+   */
+  images?: string[];
+  /** Deprecated single image, kept so older rows keep rendering. */
   imageUrl?: string;
+  /** Where it is dropshipped from, when it is not made by the house. */
+  supplier?: SupplierRef;
   status?: GoodsStatus;
   vipOnly?: boolean;
+}
+
+/**
+ * A dropshipped line's provenance. `source` is the platform it came in from
+ * ("alidrop"), `productId` is that platform's id for it — together they are
+ * what an order is placed against, and what the importer matches on so a
+ * re-import updates a piece rather than duplicating it.
+ */
+export interface SupplierRef {
+  source: string;
+  productId: string;
+  /** The supplier's listing, for the buyer to check against. Never shown. */
+  url?: string;
+  /** What the house pays, cents. Margin is `price - costCents`. */
+  costCents?: number;
+  /** Supplier dispatch estimate, before postage. */
+  leadDays?: { min: number; max: number };
+}
+
+/** Every photograph of a product, newest model first, legacy field second. */
+export function imagesOf(p: Product): string[] {
+  if (p.images?.length) return p.images;
+  return p.imageUrl ? [p.imageUrl] : [];
+}
+
+/**
+ * The picture to show for a chosen variant: its own photograph when it has
+ * one, else the product's first. A shade with no shot of its own should not
+ * blank the gallery.
+ */
+export function imageFor(p: Product, code?: string): string | null {
+  const variant = code ? variantOf(p, code) : null;
+  return variant?.image ?? imagesOf(p)[0] ?? null;
+}
+
+/** Dropshipped, rather than made by the house. */
+export function isDropshipped(p: Product): boolean {
+  return !!p.supplier?.productId;
 }
 
 // ─── The seed ────────────────────────────────────────────────────────────────

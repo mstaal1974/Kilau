@@ -6,7 +6,7 @@ import type { Product } from "../lib/goods";
 import { sku as skuOf, FORMAT_BY_KEY } from "../lib/formats";
 import { navigate, paths } from "../lib/route";
 import BottleImage from "./BottleImage";
-import { GoodsArt } from "./goods/GoodsArt";
+import { GoodsThumb } from "./goods/GoodsArt";
 import { Arrow, Icon } from "./ui";
 import { MONO, SERIF, btnGold, btnGhost, btnLink, micro } from "./styles";
 
@@ -96,7 +96,7 @@ export default function BagDrawer({ lines, fragrances, products, placed, onClose
                       <BottleImage imageUrl={row.art.frag.imageUrl} fallbackSrc="/assets/bottle-square.jpg" alt="" accent={row.art.frag.accent} liquid={row.art.frag.liquid} height={76} />
                     ) : (
                       <span style={{ border: "1px solid #e4ddd0", overflow: "hidden", display: "block" }}>
-                        <GoodsArt product={row.art.product} height={76} />
+                        <GoodsThumb product={row.art.product} variant={(row.line as { variant?: string }).variant} height={76} />
                       </span>
                     )}
                     <div>

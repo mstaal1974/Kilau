@@ -25,7 +25,14 @@ export interface ProductRow {
   grams: number;
   hue: string;
   shade: string;
+  images: string[] | null;
   image_url: string | null;
+  supplier: string | null;
+  supplier_product_id: string | null;
+  supplier_url: string | null;
+  cost_cents: number | null;
+  lead_min_days: number | null;
+  lead_max_days: number | null;
   status: GoodsStatus;
   vip_only: boolean;
   sort_order: number;
@@ -49,7 +56,17 @@ export function rowToProduct(r: ProductRow): Product {
     grams: r.grams,
     hue: r.hue,
     shade: r.shade,
+    images: r.images?.length ? r.images : undefined,
     imageUrl: r.image_url ?? undefined,
+    supplier: r.supplier && r.supplier_product_id
+      ? {
+          source: r.supplier,
+          productId: r.supplier_product_id,
+          url: r.supplier_url ?? undefined,
+          costCents: r.cost_cents ?? undefined,
+          leadDays: r.lead_min_days != null && r.lead_max_days != null ? { min: r.lead_min_days, max: r.lead_max_days } : undefined,
+        }
+      : undefined,
     status: r.status,
     vipOnly: r.vip_only,
   };

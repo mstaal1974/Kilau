@@ -13,7 +13,7 @@ import {
 } from "../../lib/goods";
 import { GOLD, CREAM, money } from "../../lib/data";
 import { navigate, paths } from "../../lib/route";
-import GoodsImage, { GoodsArt } from "./GoodsArt";
+import { GoodsGallery, GoodsThumb } from "./GoodsArt";
 import GoodsCard from "./GoodsCard";
 import { Arrow, Container, Icon } from "../ui";
 import { MONO, SERIF, btnGold, btnLink, micro } from "../styles";
@@ -60,8 +60,8 @@ export default function GoodsDetail({ product, products, vip, onAdd }: Props) {
       <Container style={{ padding: "34px 32px 0" }}>
         <div className="kb-pdp-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 520px) minmax(0, 1fr)", gap: 46, alignItems: "start" }}>
           {/* The piece */}
-          <div style={{ border: "1px solid #e4ddd0", background: "#ffffff" }}>
-            <GoodsImage product={product} height={560} />
+          <div>
+            <GoodsGallery product={product} selected={code} height={560} />
           </div>
 
           {/* The decision */}
@@ -132,7 +132,7 @@ export default function GoodsDetail({ product, products, vip, onAdd }: Props) {
             <div style={{ marginTop: 20, borderTop: "1px solid #e4ddd0", paddingTop: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 220 }}>
                 <span style={{ width: 62, height: 78, flexShrink: 0, border: "1px solid #e4ddd0", overflow: "hidden" }}>
-                  <GoodsArt product={product} height={76} />
+                  <GoodsThumb product={product} variant={code} height={76} />
                 </span>
                 <div>
                   <div style={{ fontFamily: SERIF, fontSize: 22, color: CREAM, lineHeight: 1 }}>{product.name}</div>

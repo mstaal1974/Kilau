@@ -21,7 +21,7 @@ try {
   const { PRODUCTS } = await import(pathToFileURL(path.join(temp, "goods.js")));
 
   const q = (v) => (v == null ? "null" : `'${String(v).replace(/'/g, "''")}'`);
-  const arr = (xs) => `array[${xs.map(q).join(",")}]`;
+  const arr = (xs) => (xs.length ? `array[${xs.map(q).join(",")}]` : "'{}'");
   const rows = PRODUCTS.map((p, i) =>
     "  (" +
     [
