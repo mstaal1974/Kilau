@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+  <rect width="80" height="80" fill="#ffffff"/>
+  <defs>
+    <linearGradient id="s" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#D9B98A"/>
+      <stop offset="48%" stop-color="#C8A063"/>
+      <stop offset="100%" stop-color="#8A6215"/>
+    </linearGradient>
+  </defs>
+  <g fill="none">
+    <line x1="40.00" y1="27.00" x2="40.00" y2="14.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="43.36" y1="27.44" x2="45.31" y2="20.20" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="46.50" y1="28.74" x2="53.00" y2="17.48" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="49.19" y1="30.81" x2="54.50" y2="25.50" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="51.26" y1="33.50" x2="62.52" y2="27.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="52.56" y1="36.64" x2="59.80" y2="34.69" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="53.00" y1="40.00" x2="66.00" y2="40.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="52.56" y1="43.36" x2="59.80" y2="45.31" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="51.26" y1="46.50" x2="62.52" y2="53.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="49.19" y1="49.19" x2="54.50" y2="54.50" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="46.50" y1="51.26" x2="53.00" y2="62.52" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="43.36" y1="52.56" x2="45.31" y2="59.80" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="40.00" y1="53.00" x2="40.00" y2="66.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="36.64" y1="52.56" x2="34.69" y2="59.80" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="33.50" y1="51.26" x2="27.00" y2="62.52" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="30.81" y1="49.19" x2="25.50" y2="54.50" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="28.74" y1="46.50" x2="17.48" y2="53.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="27.44" y1="43.36" x2="20.20" y2="45.31" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="27.00" y1="40.00" x2="14.00" y2="40.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="27.44" y1="36.64" x2="20.20" y2="34.69" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="28.74" y1="33.50" x2="17.48" y2="27.00" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="30.81" y1="30.81" x2="25.50" y2="25.50" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+    <line x1="33.50" y1="28.74" x2="27.00" y2="17.48" stroke="url(#s)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="36.64" y1="27.44" x2="34.69" y2="20.20" stroke="url(#s)" stroke-width="1.1" stroke-linecap="round"/>
+  </g>
+  <circle cx="40" cy="40" r="8.6" fill="url(#s)"/>
+  <circle cx="40" cy="9" r="1.5" fill="#B8873C"/>
+  <circle cx="40" cy="3.5" r="1" fill="#C8A063"/>
+  <circle cx="40" cy="71" r="1.5" fill="#B8873C"/>
+  <circle cx="40" cy="76.5" r="1" fill="#C8A063"/>
+</svg>

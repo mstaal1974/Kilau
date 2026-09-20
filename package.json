@@ -1,0 +1,39 @@
+{
+  "name": "kilau-bali",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && node scripts/check_output_schemas.mjs && vite build",
+    "check:schemas": "node scripts/check_output_schemas.mjs",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test:security": "node scripts/test_checkout_security.mjs",
+    "audit:contrast": "node scripts/audit_contrast.mjs",
+    "audit:contrast:states": "node scripts/audit_contrast_states.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
+    "@supabase/supabase-js": "^2.47.10",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "stripe": "^22.6.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.3",
+    "@types/node": "^24.10.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "eslint": "^9.39.3",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.3.0",
+    "playwright": "^1.56.1",
+    "pngjs": "^7.0.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vite": "^7.3.1"
+  }
+}

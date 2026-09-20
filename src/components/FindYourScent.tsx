@@ -1,0 +1,244 @@
+import { type FormEvent, useMemo, useState } from "react";
+import { type Fragrance, GOLD, CREAM } from "../lib/data";
+import { findMatches, isStrongMatch, MOODS, fromLabel, profileOf, availableIn, referenceOf } from "../lib/formats";
+import { submitScentRequest } from "../lib/requests";
+import { navigate, paths } from "../lib/route";
+import { Arrow, Container, Icon, Chip, InspiredBy } from "./ui";
+import { MONO, SERIF, btnGold, btnLink, micro } from "./styles";
+import BottleImage from "./BottleImage";
+
+interface FindYourScentProps {
+  fragrances: Fragrance[];
+  mode?: "section" | "page";
+  initialQuery?: string;
+  onQuickView?: (f: Fragrance) => void;
+  /** Signed-in customer's email, prefilled on the request form. */
+  userEmail?: string;
+}
+
+/**
+ * "Tell us a scent you love." Matches a fragrance or brand the customer already
+ * wears against the house's inspiration library and suggests its Kilau.
+ * Renders inline on the homepage (mode="section") and as the full
+ * #/find page (mode="page").
+ */
+export default function FindYourScent({ fragrances, mode = "section", initialQuery = "", onQuickView, userEmail }: FindYourScentProps) {
+  const [q, setQ] = useState(initialQuery);
+  const [submitted, setSubmitted] = useState(initialQuery);
+  const matches = useMemo(() => (submitted.trim() ? findMatches(submitted, fragrances, mode === "page" ? 8 : 3) : []), [submitted, fragrances, mode]);
+  // We carry it when the top result is the scent they named; otherwise the
+  // results are nearest profiles and the ask becomes a request.
+  const carried = matches.length > 0 && isStrongMatch(matches[0]);
+  const [askAnyway, setAskAnyway] = useState(false);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitted(q);
+    if (mode === "section" && q.trim()) navigate(paths.find(q), false);
+  };
+
+  const profiles = MOODS.filter((m) => ["Woody", "Fresh", "Spicy", "Floral"].includes(m.id));
+
+  const bar = (
+    <form onSubmit={submit} style={{ display: "flex", alignItems: "stretch", border: "1px solid #b8873c", height: 50, flex: 1, minWidth: 320 }}>
+      <span style={{ display: "grid", placeItems: "center", padding: "0 14px 0 16px" }}>
+        <Icon name="search" size={17} color={CREAM} />
+      </span>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="e.g. Tom Ford Oud Wood, Le Labo Santal 33, Bleu de Chanel…"
+        aria-label="Fragrance or brand you love"
+        style={{ flex: 1, background: "none", border: 0, outline: "none", color: CREAM, fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.02em" }}
+      />
+      <button type="submit" className="kb-cta" style={{ ...btnGold, height: "100%", padding: "0 26px" }}>
+        Find my match <Arrow />
+      </button>
+    </form>
+  );
+
+  const results = matches.length > 0 && (
+    <div style={{ marginTop: mode === "page" ? 36 : 22, display: "grid", gap: 12 }}>
+      <div style={{ ...micro, color: GOLD }}>
+        {matches[0]?.matchedHouse
+          ? `${matches.length} Kilau Bali scent${matches.length > 1 ? "s" : ""} built on ${referenceOf(matches[0].frag).brand} profiles`
+          : `Your Kilau Bali match${matches.length > 1 ? "es" : ""}`}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: mode === "page" ? "repeat(auto-fill, minmax(300px, 1fr))" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+        {matches.map((m, i) => (
+          <article key={m.frag.id} className="kb-card" style={{ position: "relative", border: `1px solid ${i === 0 ? "rgba(184,135,60,0.52)" : "#e4ddd0"}`, background: "#f7f4ee", display: "grid", gridTemplateColumns: "96px 1fr", gap: 16, padding: 14 }}>
+            {/* The whole card is the Explore link — a result you have already
+                decided on should not need a small target. It sits above the
+                text and under the two buttons, and stays out of the tab order:
+                Explore below is the same action, already announced. */}
+            <button
+              aria-hidden
+              tabIndex={-1}
+              onClick={() => navigate(paths.product(m.frag.slug))}
+              style={{ position: "absolute", inset: 0, zIndex: 1, background: "none", border: 0, padding: 0, cursor: "pointer" }}
+            />
+            <BottleImage imageUrl={m.frag.imageUrl} fallbackSrc="/assets/bottle-square.jpg" alt={`${m.frag.name} bottle`} accent={m.frag.accent} liquid={m.frag.liquid} height={116} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                <div style={{ fontFamily: SERIF, fontSize: 22, color: CREAM, lineHeight: 1.05 }}>{m.frag.name}</div>
+                {!m.matchedHouse && <div style={{ fontFamily: MONO, fontSize: 10, color: GOLD, whiteSpace: "nowrap" }}>{m.percent}% match</div>}
+              </div>
+              <InspiredBy {...referenceOf(m.frag)} size="md" />
+              <div style={{ ...micro, color: "rgba(20,18,14,0.74)" }}>{profileOf(m.frag).join(" · ")}</div>
+              <div style={{ fontSize: 12, color: "rgba(20,18,14,0.68)", lineHeight: 1.5 }}>{m.reason}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                {availableIn(m.frag).map((a) => (
+                  <Chip key={a.group} tone={a.status === "live" ? "gold" : "cream"}>{a.label}{a.status === "coming_soon" ? " · soon" : ""}</Chip>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto" }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: CREAM }}>{fromLabel(m.frag)}</span>
+                <span style={{ display: "flex", gap: 14, position: "relative", zIndex: 2 }}>
+                  {onQuickView && (
+                    <button style={btnLink} onClick={() => onQuickView(m.frag)}>Choose format</button>
+                  )}
+                  <button style={btnLink} onClick={() => navigate(paths.product(m.frag.slug))}>Explore <Arrow size={10} /></button>
+                </span>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+
+  const noResults = submitted.trim() && !matches.length && (
+    <p style={{ marginTop: 18, fontSize: 13, color: "rgba(20,18,14,0.74)" }}>
+      Nothing in the house matches “{submitted}” yet.
+    </p>
+  );
+
+  // Request panel: shown whenever we can't put the named scent in their hands.
+  const request = submitted.trim() && (!carried || askAnyway) && (
+    <RequestScent key={submitted} query={submitted} email={userEmail} closest={carried ? undefined : matches[0]?.frag} />
+  );
+  // Carried: results first, then the "not the one?" escape hatch. Not carried:
+  // the request leads and the nearest profiles follow as consolation.
+  const notTheOne = submitted.trim() && carried && !askAnyway && (
+    <p style={{ marginTop: 14, fontSize: 12.5, color: "rgba(20,18,14,0.68)" }}>
+      Not the scent you meant?{" "}
+      <button style={{ ...btnLink, fontSize: 11 }} onClick={() => setAskAnyway(true)}>Request “{submitted}”</button>
+    </p>
+  );
+
+  if (mode === "page") {
+    return (
+      <main data-screen-label="Find your scent" style={{ minHeight: "60vh" }}>
+        <Container style={{ padding: "54px 32px 80px" }}>
+          <div style={{ ...micro, color: GOLD }}>Find your Kilau</div>
+          <h1 style={{ margin: "12px 0 0", fontFamily: SERIF, fontWeight: 400, fontSize: 52, color: CREAM, lineHeight: 1 }}>Tell us something you already love.</h1>
+          <p style={{ margin: "14px 0 30px", maxWidth: 560, fontSize: 14, lineHeight: 1.7, color: "rgba(20,18,14,0.74)" }}>
+            Search a fragrance or brand you wear — we'll show the Kilau Bali scent built on the same profile, and every way you can take it with you.
+          </p>
+          {bar}
+          {noResults}
+          {carried ? results : request}
+          {carried ? request : results}
+          {notTheOne}
+          <div style={{ marginTop: 44, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <span style={micro}>Or explore our scent profiles</span>
+            {MOODS.map((m) => (
+              <Chip key={m.id} onClick={() => navigate(paths.shop(m.id.toLowerCase()))}>{m.id}</Chip>
+            ))}
+          </div>
+        </Container>
+      </main>
+    );
+  }
+
+  return (
+    <section aria-label="Find your fragrance" style={{ borderBottom: "1px solid #e4ddd0", background: "linear-gradient(180deg, #fcfaf6, #ffffff)" }}>
+      <Container style={{ padding: "26px 32px 26px" }}>
+        <div className="kb-find-grid" style={{ display: "grid", gridTemplateColumns: "300px 1fr auto", alignItems: "center", gap: 28 }}>
+          <div>
+            <h2 style={{ margin: 0, fontFamily: SERIF, fontWeight: 400, fontSize: 30, color: CREAM, lineHeight: 1.05 }}>Find your fragrance</h2>
+            <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.55, color: "rgba(20,18,14,0.74)" }}>Tell us a scent you love, and we'll suggest your Kilau Bali match.</p>
+          </div>
+          {bar}
+          <div style={{ display: "flex", alignItems: "center", gap: 18, paddingLeft: 26, borderLeft: "1px solid #e4ddd0" }}>
+            <span style={{ ...micro, lineHeight: 1.6 }}>Or explore<br />our scent profiles</span>
+            <span style={{ display: "flex", gap: 8 }}>
+              {profiles.map((m) => (
+                <button
+                  key={m.id}
+                  title={`${m.id} — ${m.hint}`}
+                  aria-label={`Shop ${m.id}`}
+                  onClick={() => navigate(paths.shop(m.id.toLowerCase()))}
+                  style={{ width: 42, height: 42, borderRadius: "50%", border: "2px solid rgba(184,135,60,0.41)", background: `radial-gradient(circle at 35% 35%, ${m.swatch}ee, #ffffff)`, cursor: "pointer" }}
+                />
+              ))}
+            </span>
+            <button aria-label="All scent profiles" onClick={() => navigate(paths.fragrances)} style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid rgba(184,135,60,0.52)", background: "none", color: GOLD, display: "grid", placeItems: "center", cursor: "pointer" }}>
+              <Arrow size={10} />
+            </button>
+          </div>
+        </div>
+        {noResults}
+        {carried ? results : request}
+        {carried ? request : results}
+        {notTheOne}
+      </Container>
+    </section>
+  );
+}
+
+interface RequestScentProps {
+  query: string;
+  email?: string;
+  /** Nearest profile we do carry, if any — named so the ask reads as informed. */
+  closest?: Fragrance;
+}
+
+/**
+ * "We don't carry it yet — request it." One field (email, optional) and a
+ * button. Submits to the scent_requests store; the admin console triages it.
+ */
+function RequestScent({ query, email: initialEmail = "", closest }: RequestScentProps) {
+  const [email, setEmail] = useState(initialEmail);
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+
+  const send = async (e: FormEvent) => {
+    e.preventDefault();
+    setState("busy");
+    const ok = await submitScentRequest(query, email);
+    setState(ok ? "done" : "error");
+  };
+
+  return (
+    <div style={{ marginTop: 22, border: "1px solid rgba(184,135,60,0.34)", background: "#f7f4ee", padding: "18px 20px", display: "grid", gap: 10, maxWidth: 640 }}>
+      <div style={{ ...micro, color: GOLD }}>Request a scent</div>
+      {state === "done" ? (
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: CREAM }}>
+          Noted. We've added “{query}” to the atelier's request list{email.trim() ? " and will let you know when it's in the house" : ""}.
+        </p>
+      ) : (
+        <>
+          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: CREAM }}>
+            We don't carry “{query}” yet.{closest ? ` ${closest.name} is the closest profile in the house, below.` : ""} Request it and we'll look at sourcing it for a coming batch.
+          </p>
+          <form onSubmit={send} className="kb-request-form" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Your email (optional) — to hear when it lands"
+              aria-label="Email for updates"
+              style={{ flex: "1 1 260px", height: 44, background: "none", border: "1px solid #9c9078", outline: "none", padding: "0 14px", color: CREAM, fontFamily: MONO, fontSize: 11.5 }}
+            />
+            <button type="submit" className="kb-cta" disabled={state === "busy"} style={{ ...btnGold, height: 44, padding: "0 22px", opacity: state === "busy" ? 0.7 : 1 }}>
+              {state === "busy" ? "Sending…" : "Request it"} <Arrow />
+            </button>
+          </form>
+          {state === "error" && (
+            <div style={{ fontSize: 11.5, color: "#a8431b" }}>That didn't go through. Please try again in a moment.</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
