@@ -262,6 +262,7 @@ page.
 npm run preview                  # serve dist/ on :4173
 npm run audit:contrast           # every route, at four scroll positions
 npm run audit:contrast:states    # overlays, the whole quiz, the phone layout
+npm run audit:contrast:controls  # form-control borders, which need 3:1 of their own
 ```
 
 Each pass collects every run of text with its colour and its line boxes, makes
@@ -272,7 +273,7 @@ by something else (anything scrolled under the sticky header) is skipped rather
 than reported. Anything below 4.5:1 (3:1 for large text) is printed with the
 worst pixel it found and where.
 
-Both passes report `TOTAL: 0` on the current build. Set `CHROMIUM_PATH` if
+All three report nothing on the current build. Set `CHROMIUM_PATH` if
 Playwright's own browser download is unavailable, and `BASE_URL` to audit a
 deployed environment.
 

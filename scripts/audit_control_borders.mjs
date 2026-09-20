@@ -6,11 +6,11 @@ const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
 const parse = (c) => { const m = String(c).match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/); return m ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]] : null; };
 
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const b = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const p = await b.newPage({ viewport: { width: 1400, height: 1200 } });
 const seen = new Set();
 for (const route of ['#/', '#/checkout', '#/find', '#/subscribe', '#/help', '#/fragrances', '#/discovery', '#/about']) {
-  await p.goto('http://127.0.0.1:4173/' + route, { waitUntil: 'networkidle' });
+  await p.goto((process.env.BASE_URL || 'http://127.0.0.1:4173/') + route, { waitUntil: 'networkidle' });
   await p.reload({ waitUntil: 'networkidle' });
   await p.waitForTimeout(600);
   const rows = await p.evaluate(() => {

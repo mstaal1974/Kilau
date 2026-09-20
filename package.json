@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test:security": "node scripts/test_checkout_security.mjs",
     "audit:contrast": "node scripts/audit_contrast.mjs",
-    "audit:contrast:states": "node scripts/audit_contrast_states.mjs"
+    "audit:contrast:states": "node scripts/audit_contrast_states.mjs",
+    "audit:contrast:controls": "node scripts/audit_control_borders.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
