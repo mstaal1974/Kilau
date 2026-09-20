@@ -88,6 +88,29 @@ await page.waitForTimeout(700);
 const chat = page.locator('button[aria-label*="oncierge" i], button[aria-label*="hat" i]').first();
 if (await chat.count()) { await chat.click({ timeout: 5000 }).catch(() => {}); await page.waitForTimeout(700); total += await check(page, 'chat widget'); }
 
+// ── A piece of goods, from the product page to the bag ──────────────────────
+await page.goto(BASE + '#/p/sanur-slip-dress', { waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(700);
+const addDress = page.getByRole('button', { name: /^Add to bag$/i }).first();
+if (await addDress.count()) {
+  await addDress.click();
+  await page.waitForTimeout(700);
+  total += await check(page, 'bag drawer (goods)');
+  await page.goto(BASE + '#/checkout', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  total += await check(page, 'checkout (goods)');
+  await page.evaluate(() => window.scrollTo(0, 700));
+  await page.waitForTimeout(400);
+  total += await check(page, 'checkout (goods, scrolled)');
+}
+
+// A sold-out variant, which is the one state the picker draws differently.
+await page.goto(BASE + '#/p/kilau-skin-tint', { waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(700);
+total += await check(page, 'shade picker');
+
 // ── Checkout with something in the bag ──────────────────────────────────────
 await page.goto(BASE + '#/fragrances', { waitUntil: 'networkidle' });
 await page.reload({ waitUntil: 'networkidle' });
@@ -128,7 +151,7 @@ await page.close();
 
 // ── The phone layout ────────────────────────────────────────────────────────
 const m = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
-for (const route of ['#/', '#/fragrances', '#/checkout', '#/subscribe', '#/discover']) {
+for (const route of ['#/', '#/fragrances', '#/checkout', '#/subscribe', '#/discover', '#/women', '#/beauty', '#/c/dresses', '#/p/sanur-slip-dress', '#/p/kilau-satin-lipstick']) {
   await m.goto(BASE + route, { waitUntil: 'networkidle' });
   await m.waitForTimeout(700);
   total += await check(m, `phone ${route}`);

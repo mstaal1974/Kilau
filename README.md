@@ -55,10 +55,42 @@ product; every way of buying it — 10 ml Discovery, 30 ml Everyday Pour, 50 ml
 Signature Pour, Car Diffuser, Body Wash, Moisturiser, the Complete Ritual set —
 is a *format* (SKU) of that fragrance, not a separate listing.
 
-- **Navigation** — `SHOP` (mega-menu: shop by fragrance / shop by format) ·
-  `FRAGRANCES` · `DISCOVERY` · `CAR` · `BODY & SETS` · `FIND YOUR SCENT` ·
-  `SCENT DNA`, plus a persistent search icon and **Your bag (n)**. Gender is a
-  filter, not the architecture.
+**The rest of the house.** Fragrance is one department of six. Clothing,
+jewellery, cosmetics and watches are a second product family — *goods* — and
+they do not fit the fragrance model: a dress has sizes, a lipstick has shades,
+a watch has a strap. So a product carries a list of **variants**, one per SKU,
+each with its own stock and, where they differ, its own price
+(`src/lib/goods.ts`).
+
+| Department | Categories | Variant |
+| --- | --- | --- |
+| **Women's Clothing** (`#/women`) | Dresses · Tops & Shirts · Trousers & Skirts · Swim & Cover-ups · Outerwear | Size |
+| **Men's Clothing** (`#/men`) | Shirts · T-Shirts & Polos · Trousers & Shorts · Jackets | Size |
+| **Jewellery** (`#/jewellery`) | Rings · Necklaces · Earrings · Bracelets & Cuffs | Ring size / chain length |
+| **Makeup & Cosmetics** (`#/beauty`) | Lips · Face · Eyes · Skin & Body | Shade |
+| **Watches** (`#/watches`) | Automatic · Quartz · Straps | Strap |
+
+The taxonomy is two levels and stops there — department, category, product —
+because a shopper who has to click three times before seeing a product has
+already left. A department page (`#/women`) shows its categories as tiles over
+the full grid; a category page (`#/c/dresses`) is the same grid with the filter
+fixed; a product page (`#/p/sanur-slip-dress`) leads with the picker, and a
+sold-out size stays visible and struck through rather than disappearing.
+
+These lines are **bought, not browsed**: they go through the same bag, the same
+live Australia Post quote and the same Stripe Checkout as a bottle, and land in
+the same `commits` table. A bag can hold both families at once.
+
+> **No photography yet.** Each category has a drawn silhouette
+> (`GoodsArt.tsx`) filled with the product's own two tones, so a grid reads as
+> a range of pieces rather than a wall of placeholder boxes. Set `image_url` on
+> a product and the photograph takes over with no other change.
+
+- **Navigation** — `SHOP` (mega-menu: one column per department, each heading
+  its own page and listing its categories) · `WOMEN` · `MEN` · `JEWELLERY` ·
+  `BEAUTY` · `WATCHES` · `FRAGRANCE` · `SCENT DNA`, plus a persistent search
+  icon and **Your bag (n)**. Gender is a filter within fragrance, not the
+  architecture; in clothing it is the department.
 - **Homepage** — hero (*Wear it. Live it. Take it with you.*), the four ranges
   (Discover / Wear / Drive / Ritual), **Find your fragrance** (type a scent you
   love → your Kilau Bali match with a % score), **Shop by mood** chips with
@@ -299,7 +331,10 @@ src/
 │   ├── scentShare.ts      Share codes, local persistence, lead capture
 │   ├── scentai.ts         The six AI capabilities + a local fallback for each
 │   ├── scentLearning.ts   Signals, the merge maths, and what changed
-│   ├── bag.ts             Bag lines, orders, Discovery Box picks (localStorage store)
+│   ├── goods.ts           Departments, categories, the goods seed, variant pricing
+│   ├── goodsStore.ts      useProducts() — the products table, with the seed as fallback
+│   ├── bag.ts             Bag lines (fragrance | goods), Discovery Box picks (localStorage)
+│   ├── bagRows.ts         Resolves a bag line against either catalogue for display
 │   ├── route.ts           Hash router + path helpers
 │   ├── concierge.ts       Chatbot: catalogue summary, streaming client, offline fallback
 │   └── store.ts           useFragrances() + recordCommit() + fetch{MyCommits,MyShipments}()
@@ -311,6 +346,12 @@ src/
     ├── AuthModal.tsx  MyReservations.tsx  AdminConsole.tsx  ChatWidget.tsx
     ├── ConceiveFragrance.tsx  BottleImage.tsx  adminStyles.ts
     ├── Footer.tsx  LayoutSwitch.tsx  Logo.tsx
+    ├── goods/
+    │   ├── GoodsArt.tsx              Drawn silhouettes, per category, until there is photography
+    │   ├── GoodsCard.tsx             Collection tile for a piece of goods
+    │   ├── GoodsCollection.tsx       Department landing page + category grid
+    │   ├── GoodsDetail.tsx           Product page: variant picker, add to bag
+    │   └── DepartmentsBand.tsx       The homepage row of five departments
     ├── ScentDna.tsx                  /discover — hero, experience, reveal, result
     └── scent/
         ├── Atmosphere.tsx            Vapour, molecule lattice, paper horizon
@@ -324,6 +365,7 @@ src/
         ├── ShareCard.tsx             1080 × 1350 canvas card + Share / Download / Copy
         └── theme.ts                  Palette and surfaces for the experience
 api/
+├── _lib/goods.ts          Server mirror of the goods catalogue (pricing, stock, weights)
 ├── chat.ts                Vercel serverless proxy → Claude (streams the concierge reply)
 ├── scent-ai.ts            The Scent DNA AI layer — six operations, one cached prefix
 └── conceive.ts            Vercel serverless → Claude structured output (AI fragrance conception)
@@ -367,7 +409,8 @@ as ordered migrations under `supabase/migrations/`:
 | Object | Purpose |
 | --- | --- |
 | `fragrances` | Catalogue (53 scents); columns mirror the `Fragrance` type 1:1, with per-size pricing (`price_10ml_cents` / `_30ml_` / `_50ml_`). Public read. |
-| `commits` | Batch reservations (engraving, chosen `size_ml` + `charge_cents`, `authorized`/`captured`/`released`/`void`, optional `payment_intent_id`). Anyone may insert; users read their own. |
+| `products` | The goods catalogue — clothing, jewellery, cosmetics, watches. Columns mirror the `Product` type, with the SKUs as a `variants` JSON array (`{code,label,price?,stock,swatch?}`). Public read, service-role write. Seeded by `0033_goods_seed.sql`, which is generated from `src/lib/goods.ts` by `scripts/generate_goods_seed.mjs` so the stored rows and the app's fallback seed cannot drift. |
+| `commits` | Orders. A row points at **either** a fragrance (`fragrance_id` + `format`) **or** a product (`product_id` + `variant`) — a check constraint enforces exactly one, so one table still serves the account page, the staff desk, shipments and the admin console. Anyone may insert; users read their own. |
 | `subscribers` | General list + `vip` tier (gates VIP-only batches). |
 | `scent_profiles` | Scentprints from `/discover`, keyed by a six-character share code: the sixteen dimensions, the eight behavioural attributes, the occasions chosen, the shelf (`wearer`), and an email only when the visitor asked for their result. Read through `get_scentprint` (which never returns the email); customers read their own rows, admins read all. |
 | `sync_fragrance_committed()` trigger | Keeps `fragrances.committed` in step as commits are inserted / released. |

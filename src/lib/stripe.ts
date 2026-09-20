@@ -67,6 +67,7 @@ export async function authorizePayment(
 
 import { supabase } from "./supabase";
 import type { FormatKey } from "./data";
+import type { WireLine } from "./bag";
 import type { CheckoutDelivery } from "./shipping";
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -101,13 +102,8 @@ async function call<T>(path: string, init: RequestInit): Promise<StripeCall<T>> 
   }
 }
 
-export interface StripeLine {
-  fragranceId: string;
-  format: FormatKey;
-  qty: number;
-  engraving: string | null;
-  label?: string;
-}
+/** A bag line as the checkout route receives it. Prices are never sent. */
+export type StripeLine = WireLine;
 
 /**
  * Bag → the hosted Checkout URL to redirect to. `delivery` is how the order

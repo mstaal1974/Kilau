@@ -4,7 +4,7 @@
 // threshold is applied to a subtotal we trust, then the parcel is measured and
 // quoted. Returns the services the customer can choose at checkout.
 
-import { type CheckoutLine, json, loadCatalogue, priceLines, readBody, route } from "../_lib/stripe.js";
+import { type CheckoutLine, json, loadCatalogue, loadGoods, priceLines, readBody, route } from "../_lib/stripe.js";
 import { FREE_SHIPPING_THRESHOLD_CENTS, auspostConfigured, quoteRates } from "../_lib/auspost.js";
 import { MAX_PARCEL_KG, parcelFor } from "../_lib/parcel.js";
 
@@ -30,12 +30,13 @@ export default route("shipping/quote", async function handler(req: any, res: any
 
   let priced;
   try {
-    priced = priceLines(lines, await loadCatalogue());
+    const [catalogue, goods] = await Promise.all([loadCatalogue(), loadGoods()]);
+    priced = priceLines(lines, catalogue, goods);
   } catch (e) {
     return json(res, 400, { error: e instanceof Error ? e.message : "Invalid bag" });
   }
   const subtotalCents = priced.reduce((n, l) => n + l.unitCents * l.qty, 0);
-  const parcel = parcelFor(priced.map((l) => ({ format: l.format, qty: l.qty })));
+  const parcel = parcelFor(priced.map((l) => ({ format: l.format, grams: l.grams, qty: l.qty })));
   if (parcel.weightKg > MAX_PARCEL_KG) {
     return json(res, 400, { error: `That order weighs ${parcel.weightKg} kg — over Australia Post's ${MAX_PARCEL_KG} kg parcel limit. Please split it into two orders.` });
   }

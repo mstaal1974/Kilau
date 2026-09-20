@@ -4,7 +4,7 @@
 // parcel and asks Australia Post what it costs. The chosen service is passed
 // to checkout, where it is re-quoted server-side before the customer pays.
 
-import type { FormatKey } from "./data";
+import type { WireLine } from "./bag";
 
 export interface ShippingRate {
   code: string;
@@ -18,13 +18,8 @@ export interface ShippingRate {
   etaDays?: { min: number; max: number };
 }
 
-export interface QuoteLine {
-  fragranceId: string;
-  format: FormatKey;
-  qty: number;
-  engraving: string | null;
-  label?: string;
-}
+/** What the quote is asked about: the bag, as it goes on the wire. */
+export type QuoteLine = WireLine;
 
 export interface Quote {
   rates: ShippingRate[];

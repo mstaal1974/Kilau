@@ -3,17 +3,26 @@
 
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadCatalogue, memberPrice, CURRENCY } from "./stripe.js";
+import { loadCatalogue, loadGoods, memberPrice, CURRENCY } from "./stripe.js";
 import { FORMATS, type FormatKey } from "./catalogue.js";
 
+/**
+ * A bag line as it travels through Stripe metadata. A fragrance line carries
+ * `f`/`k`; a goods line carries `p`/`v` instead. Everything else is shared, and
+ * a reader that only knows the fragrance fields still parses the array.
+ */
 interface CompactLine {
-  f: string; // fragrance id
-  k: FormatKey; // format
+  f?: string; // fragrance id
+  k?: FormatKey; // format
+  p?: string; // product id
+  v?: string; // variant code
   q: number; // qty
   e: string | null; // engraving
-  s: number; // size ml
+  s: number; // size ml — zero for goods
   u: number; // unit cents
 }
+
+const isGoods = (l: CompactLine): boolean => typeof l.p === "string" && l.p.length > 0;
 
 // ─── The bag, carried through Stripe ─────────────────────────────────────────
 //
@@ -67,19 +76,35 @@ export async function bagLines(stripe: Stripe, session: Stripe.Checkout.Session)
 
 async function rebuildFromLineItems(stripe: Stripe, session: Stripe.Checkout.Session): Promise<CompactLine[]> {
   const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100, expand: ["data.price.product"] });
-  const catalogue = await loadCatalogue();
+  const [catalogue, goods] = await Promise.all([loadCatalogue(), loadGoods()]);
   const byName = new Map([...catalogue.values()].map((f) => [f.name.trim().toLowerCase(), f]));
+  const goodsByName = new Map([...goods.values()].map((g) => [g.name.trim().toLowerCase(), g]));
   const lines: CompactLine[] = [];
   for (const item of items.data) {
     const product = item.price?.product;
     const label = product && typeof product === "object" && "name" in product ? String(product.name ?? "") : (item.description ?? "");
-    const [fragName, formatName] = label.split(" — ");
-    const frag = byName.get((fragName ?? "").trim().toLowerCase());
-    const def = FORMATS.find((f) => f.name === (formatName ?? "").trim());
-    if (!frag || !def) continue; // anything that is not a catalogue line
+    const [leadName, optionName] = label.split(" — ");
+    const lead = (leadName ?? "").trim();
+    const option = (optionName ?? "").trim();
     const description = product && typeof product === "object" && "description" in product ? String(product.description ?? "") : "";
     const engraved = description.match(/^Engraved\s+[“"](.+)[”"]$/)?.[1] ?? null;
-    lines.push({ f: frag.id, k: def.key, q: item.quantity ?? 1, e: engraved, s: def.sizeMl, u: item.price?.unit_amount ?? 0 });
+    const qty = item.quantity ?? 1;
+    const unit = item.price?.unit_amount ?? 0;
+
+    const frag = byName.get(lead.toLowerCase());
+    const def = FORMATS.find((f) => f.name === option);
+    if (frag && def) {
+      lines.push({ f: frag.id, k: def.key, q: qty, e: engraved, s: def.sizeMl, u: unit });
+      continue;
+    }
+    // A piece of goods: the option is the variant's label, not a format name.
+    const piece = goodsByName.get(lead.toLowerCase());
+    const variant = piece?.variants.find((v) => v.label === option) ?? (piece?.variantKind === "one" ? piece.variants[0] : undefined);
+    if (piece && variant) {
+      lines.push({ p: piece.id, v: variant.code, q: qty, e: engraved, s: 0, u: unit });
+      continue;
+    }
+    // Anything that is neither is not a catalogue line — postage, say.
   }
   return lines;
 }
@@ -92,7 +117,9 @@ export async function recordOrder(stripe: Stripe, db: SupabaseClient, session: S
   const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
   const customer = typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
   const rows = lines.map((l) => ({
-    fragrance_id: l.f,
+    fragrance_id: isGoods(l) ? null : (l.f ?? null),
+    product_id: isGoods(l) ? l.p : null,
+    variant: isGoods(l) ? l.v : null,
     user_id: session.metadata?.user_id || null,
     user_email: session.metadata?.user_email || session.customer_details?.email || null,
     contact_email: session.metadata?.contact_email || session.customer_details?.email || null,
@@ -100,7 +127,7 @@ export async function recordOrder(stripe: Stripe, db: SupabaseClient, session: S
     size_ml: l.s,
     charge_cents: l.u,
     payment_intent_id: piId,
-    format: l.k,
+    format: isGoods(l) ? null : (l.k ?? null),
     qty: l.q,
     // The card is charged at checkout, so the order is paid on arrival.
     status: "captured",

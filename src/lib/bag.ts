@@ -4,16 +4,34 @@
 
 import type { FormatKey } from "./data";
 
-export interface BagLine {
-  id: string; // `${fragranceId}:${format}` (or `${fragranceId}:${format}:box` for a Discovery Box piece)
-  fragranceId: string;
-  format: FormatKey;
+interface LineBase {
+  id: string;
   qty: number;
   engraving: string | null;
   /** Price override in cents — Discovery Box pieces are priced as a set. */
   unitPrice?: number;
   label?: string; // e.g. "Discovery Box"
 }
+
+/** A fragrance in one of its formats. */
+export interface FragranceLine extends LineBase {
+  kind: "fragrance";
+  // `${fragranceId}:${format}`, or `…:box` for a Discovery Box piece.
+  fragranceId: string;
+  format: FormatKey;
+}
+
+/** A piece of goods in one of its variants — a size, a shade, a strap. */
+export interface GoodsLine extends LineBase {
+  kind: "goods";
+  // `g:${productId}:${variant}`.
+  productId: string;
+  variant: string;
+}
+
+export type BagLine = FragranceLine | GoodsLine;
+
+export const isGoodsLine = (l: BagLine): l is GoodsLine => l.kind === "goods";
 
 export interface Order {
   id: string;
@@ -71,7 +89,16 @@ function loadOrders(): Order[] {
   return all;
 }
 
-let lines: BagLine[] = load<BagLine[]>(BAG_KEY, []);
+/**
+ * Bags saved before the house sold anything but fragrance have no `kind`.
+ * They are all fragrance lines, so tag them on the way in rather than leaving
+ * a shopper's bag to fail the union.
+ */
+function loadLines(): BagLine[] {
+  return load<BagLine[]>(BAG_KEY, []).map((l) => (l.kind ? l : { ...(l as FragranceLine), kind: "fragrance" }));
+}
+
+let lines: BagLine[] = loadLines();
 let orders: Order[] = loadOrders();
 const subs = new Set<() => void>();
 function emit() {
@@ -89,6 +116,16 @@ export function bagOrders(): Order[] {
   return orders;
 }
 
+/** Adds `line` to the bag, or tops up the quantity if it is already there. */
+function put(line: BagLine, qty: number, engraving: string | null): void {
+  const existing = lines.find((l) => l.id === line.id);
+  lines = existing
+    ? lines.map((l) => (l.id === line.id ? { ...l, qty: Math.min(9, l.qty + qty), engraving: engraving ?? l.engraving } : l))
+    : [...lines, line];
+  save(BAG_KEY, lines);
+  emit();
+}
+
 export function addToBag(
   fragranceId: string,
   format: FormatKey,
@@ -97,12 +134,12 @@ export function addToBag(
   extra?: { unitPrice?: number; label?: string },
 ): void {
   const id = `${fragranceId}:${format}${extra?.label ? ":box" : ""}`;
-  const existing = lines.find((l) => l.id === id);
-  lines = existing
-    ? lines.map((l) => (l.id === id ? { ...l, qty: Math.min(9, l.qty + qty), engraving: engraving ?? l.engraving } : l))
-    : [...lines, { id, fragranceId, format, qty, engraving, ...extra }];
-  save(BAG_KEY, lines);
-  emit();
+  put({ kind: "fragrance", id, fragranceId, format, qty, engraving, ...extra }, qty, engraving);
+}
+
+/** The goods equivalent: a product in one of its variants. */
+export function addProductToBag(productId: string, variant: string, qty = 1, engraving: string | null = null): void {
+  put({ kind: "goods", id: `g:${productId}:${variant}`, productId, variant, qty, engraving }, qty, engraving);
 }
 
 export function setQty(id: string, qty: number): void {
@@ -161,4 +198,23 @@ export function clearDiscovery(): void {
   discovery = [];
   save(DISCOVERY_KEY, discovery);
   emit();
+}
+
+// ─── The bag, on the wire ────────────────────────────────────────────────────
+//
+// What the postage quote and the checkout session are sent. Prices are never
+// included: the server prices the bag itself from the live catalogue, and this
+// only says what is in it. A fragrance line carries no `kind` so a session
+// created by an older build still parses.
+
+export type WireLine =
+  | { kind?: "fragrance"; fragranceId: string; format: FormatKey; qty: number; engraving: string | null; label?: string }
+  | { kind: "goods"; productId: string; variant: string; qty: number; engraving: string | null };
+
+export function toWire(lines: BagLine[]): WireLine[] {
+  return lines.map((l) =>
+    l.kind === "goods"
+      ? { kind: "goods" as const, productId: l.productId, variant: l.variant, qty: l.qty, engraving: l.engraving }
+      : { fragranceId: l.fragranceId, format: l.format, qty: l.qty, engraving: l.engraving, label: l.label },
+  );
 }

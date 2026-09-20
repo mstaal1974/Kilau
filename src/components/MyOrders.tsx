@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
-import { type Fragrance, money, GOLD_LEAF } from "../lib/data";
+import { money, GOLD_LEAF } from "../lib/data";
 
 export interface Order {
-  frag: Fragrance;
+  /**
+   * What was bought, already resolved against whichever catalogue it came
+   * from: the account page shows fragrance and goods in one list, so it is
+   * handed a name and a link rather than a fragrance row.
+   */
+  item: { id: string; name: string; href: string };
   sizeMl?: number;
   formatLabel?: string; // e.g. "Car Diffuser 10ml"
   qty?: number;
@@ -35,7 +40,7 @@ const STATUS: Record<Order["status"], { label: string; color: string; bg: string
 interface MyOrdersProps {
   orders: Order[];
   loading: boolean;
-  onOpen: (slug: string) => void;
+  onOpen: (href: string) => void;
   onBackToVault: () => void;
   /** The Monthly Pour panel, rendered above the orders. */
   subscriptionSlot?: ReactNode;
@@ -89,14 +94,14 @@ export default function MyOrders({ orders, loading, onOpen, onBackToVault, subsc
               const s = STATUS[o.status];
               return (
                 <div
-                  key={`${o.frag.id}-${i}`}
+                  key={`${o.item.id}-${i}`}
                   className="kb-card"
                   style={{ border: "1px solid #e4ddd0", background: "#f7f4ee", padding: 24, cursor: "pointer" }}
-                  onClick={() => onOpen(o.frag.slug)}
+                  onClick={() => onOpen(o.item.href)}
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: "#14120e", lineHeight: 1 }}>{o.frag.name}</div>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, color: "#14120e", lineHeight: 1 }}>{o.item.name}</div>
                       <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: "'Space Mono',monospace", fontSize: 11, color: "rgba(20,18,14,0.74)" }}>
                         <span>
                           {o.formatLabel ?? (o.sizeMl ? `${o.sizeMl} ml` : "")}

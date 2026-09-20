@@ -12,6 +12,7 @@
 import Stripe from "stripe";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { type CatalogueItem, type FormatKey, FORMAT_BY_KEY, buyable, formatPrice, subscriptionPrice, DISCOVERY_BOX_PRICE, DISCOVERY_BOX_SIZE } from "./catalogue.js";
+import { type GoodsItem, type GoodsStatus, type GoodsVariant, GOODS_BY_ID, goodsBuyable, goodsLineName, goodsPrice, variantOf } from "./goods.js";
 
 export const CURRENCY = (process.env.STRIPE_CURRENCY ?? "aud").toLowerCase();
 
@@ -142,7 +143,52 @@ export async function loadCatalogue(): Promise<Map<string, CatalogueItem>> {
   return new Map(((data ?? []) as FragranceRow[]).map((r) => [r.id, rowToItem(r)]));
 }
 
-export interface CheckoutLine {
+interface ProductRow {
+  id: string;
+  slug: string;
+  name: string;
+  price_cents: number;
+  variant_kind: string;
+  variants: GoodsVariant[] | null;
+  grams: number;
+  status: GoodsStatus;
+  vip_only: boolean;
+}
+
+const GOODS_SELECT = "id, slug, name, price_cents, variant_kind, variants, grams, status, vip_only";
+
+/**
+ * The goods catalogue. Falls back to the seed — never to an empty map — so a
+ * deployment that has not run the goods migration prices a clothing line from
+ * the code it is running rather than refusing the whole bag.
+ */
+export async function loadGoods(): Promise<Map<string, GoodsItem>> {
+  const url = supabaseUrl();
+  const anon = anonKey();
+  if (!url || !anon) return GOODS_BY_ID;
+  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await sb.from("products").select(GOODS_SELECT);
+  if (error || !data || !data.length) return GOODS_BY_ID;
+  return new Map(
+    (data as ProductRow[]).map((r) => [
+      r.id,
+      {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        price: r.price_cents,
+        variantKind: r.variant_kind,
+        variants: r.variants ?? [],
+        grams: r.grams,
+        status: r.status,
+        vipOnly: r.vip_only,
+      },
+    ]),
+  );
+}
+
+export interface FragranceCheckoutLine {
+  kind?: "fragrance";
   fragranceId: string;
   format: FormatKey;
   qty: number;
@@ -151,34 +197,116 @@ export interface CheckoutLine {
   label?: string;
 }
 
-export interface PricedLine extends CheckoutLine {
+export interface GoodsCheckoutLine {
+  kind: "goods";
+  productId: string;
+  variant: string;
+  qty: number;
+  engraving: string | null;
+}
+
+export type CheckoutLine = FragranceCheckoutLine | GoodsCheckoutLine;
+
+export const isGoodsCheckoutLine = (l: CheckoutLine): l is GoodsCheckoutLine =>
+  !!l && (l as GoodsCheckoutLine).kind === "goods";
+
+/**
+ * A line the server has priced. `format` and `sizeMl` are what the fragrance
+ * side records; a goods line carries `productId`/`variant` instead and records
+ * a size of zero, which is what the commits row now allows.
+ */
+export interface PricedLine {
+  kind: "fragrance" | "goods";
+  qty: number;
+  engraving: string | null;
+  label?: string;
+  /** Fragrance lines only. */
+  fragranceId?: string;
+  format?: FormatKey;
+  /** Goods lines only. */
+  productId?: string;
+  variant?: string;
   name: string;
   formatName: string;
   sizeMl: number;
+  /** Packed weight of one unit, grams; goods only, for the postage quote. */
+  grams?: number;
   unitCents: number;
 }
 
-/** Validates and prices the bag server-side. Throws on anything not buyable. */
-export function priceLines(lines: CheckoutLine[], catalogue: Map<string, CatalogueItem>): PricedLine[] {
+/**
+ * Validates and prices the bag server-side. Throws on anything not buyable.
+ *
+ * `goods` is optional so the fragrance-only callers and the existing tests keep
+ * working unchanged; a bag containing a goods line without it is refused rather
+ * than priced from thin air.
+ */
+export function priceLines(lines: CheckoutLine[], catalogue: Map<string, CatalogueItem>, goods?: Map<string, GoodsItem>): PricedLine[] {
   if (!Array.isArray(lines) || !lines.length || lines.length > 100) throw new Error("Invalid bag size");
   for (const l of lines) {
     if (!l || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 20) throw new Error("Quantity must be between 1 and 20");
     if (l.engraving != null && typeof l.engraving !== "string") throw new Error("Invalid engraving");
+    if (isGoodsCheckoutLine(l)) {
+      if (typeof l.productId !== "string" || typeof l.variant !== "string") throw new Error("Invalid goods line");
+      // Bundles are a fragrance mechanic. A goods line claiming to be part of
+      // one is refused rather than quietly ignored.
+      if ("label" in l && (l as { label?: unknown }).label != null) throw new Error("Invalid goods line");
+      continue;
+    }
     if (l.label && l.label !== "Discovery Box") throw new Error("Invalid bundle");
     if (l.label === "Discovery Box" && l.format !== "perf10") throw new Error("Discovery Boxes contain only 10 ml fragrances");
   }
-  const boxPieces = lines.filter((l) => l.label === "Discovery Box" && l.format === "perf10").reduce((n, l) => n + l.qty, 0);
+  const boxPieces = lines
+    .filter((l) => !isGoodsCheckoutLine(l) && l.label === "Discovery Box" && l.format === "perf10")
+    .reduce((n, l) => n + l.qty, 0);
   const boxPriced = boxPieces > 0 && boxPieces % DISCOVERY_BOX_SIZE === 0;
   if (boxPieces && !boxPriced) throw new Error("Discovery Boxes must contain complete sets of five");
-  return lines.map((l) => {
+
+  return lines.map((l): PricedLine => {
+    const qty = Math.max(1, Math.min(20, Math.floor(l.qty || 1)));
+    const engraving = l.engraving?.trim().slice(0, 28) || null;
+
+    if (isGoodsCheckoutLine(l)) {
+      const catalogueGoods = goods ?? new Map<string, GoodsItem>();
+      const p = catalogueGoods.get(l.productId);
+      if (!p) throw new Error(`unknown product ${l.productId}`);
+      const v = variantOf(p, l.variant);
+      if (!v) throw new Error(`unknown option ${l.variant}`);
+      if (!goodsBuyable(p, l.variant)) throw new Error(`${goodsLineName(p, l.variant)} is not available`);
+      if (qty > v.stock) throw new Error(`Only ${v.stock} left of ${goodsLineName(p, l.variant)}`);
+      return {
+        kind: "goods",
+        productId: p.id,
+        variant: v.code,
+        qty,
+        engraving,
+        name: p.name,
+        formatName: p.variantKind === "one" ? v.label : `${v.label}`,
+        // Goods have no bottle size; the commits row records zero.
+        sizeMl: 0,
+        grams: p.grams,
+        unitCents: goodsPrice(p, l.variant),
+      };
+    }
+
     const f = catalogue.get(l.fragranceId);
     if (!f) throw new Error(`unknown fragrance ${l.fragranceId}`);
     const def = FORMAT_BY_KEY[l.format];
     if (!def) throw new Error(`unknown format ${l.format}`);
     if (!buyable(f, l.format)) throw new Error(`${f.name} ${def.name} is not available`);
-    const qty = Math.max(1, Math.min(20, Math.floor(l.qty || 1)));
     const unit = l.format === "perf10" && l.label === "Discovery Box" && boxPriced ? Math.round(DISCOVERY_BOX_PRICE / DISCOVERY_BOX_SIZE) : formatPrice(f, l.format);
-    return { ...l, qty, engraving: l.engraving?.trim().slice(0, 28) || null, name: f.name, formatName: def.name, sizeMl: def.sizeMl, unitCents: unit };
+    return {
+      kind: "fragrance",
+      fragranceId: l.fragranceId,
+      format: l.format,
+      label: l.label,
+      qty,
+      engraving,
+      name: f.name,
+      formatName: def.name,
+      sizeMl: def.sizeMl,
+      unitCents: unit,
+    };
   });
 }
 

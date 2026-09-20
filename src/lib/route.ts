@@ -8,6 +8,12 @@ export type Route =
   | { view: "discovery" }
   | { view: "car" }
   | { view: "body" }
+  // The rest of the house: a department landing page, one of its categories,
+  // and a product within it. `#/p/<slug>` is deliberately short — it is the
+  // link that gets pasted into a message.
+  | { view: "department"; slug: string }
+  | { view: "category"; slug: string }
+  | { view: "goods"; slug: string }
   | { view: "find"; query: string }
   // Discover Your Scent DNA — a standalone campaign experience. Reachable at
   // /discover and /scent-dna (clean paths, rewritten to the app) as well as the
@@ -43,6 +49,18 @@ export function parseHash(hash: string): Route {
       return { view: "car" };
     case "body":
       return { view: "body" };
+    case "women":
+    case "men":
+    case "jewellery":
+    case "beauty":
+    case "watches":
+      return { view: "department", slug: head };
+    case "department":
+      return tail ? { view: "department", slug: decodeURIComponent(tail) } : { view: "home" };
+    case "c":
+      return tail ? { view: "category", slug: decodeURIComponent(tail) } : { view: "home" };
+    case "p":
+      return tail ? { view: "goods", slug: decodeURIComponent(tail) } : { view: "home" };
     case "discover":
     case "scent-dna":
       return { view: "scent", code: null };
@@ -125,6 +143,9 @@ export const paths = {
   discovery: "#/discovery",
   car: "#/car",
   body: "#/body",
+  department: (slug: string) => `#/${encodeURIComponent(slug)}`,
+  category: (slug: string) => `#/c/${encodeURIComponent(slug)}`,
+  goods: (slug: string) => `#/p/${encodeURIComponent(slug)}`,
   find: (q?: string) => (q ? `#/find?q=${encodeURIComponent(q)}` : "#/find"),
   discover: "#/discover",
   scent: (code: string) => `#/scent/${encodeURIComponent(code)}`,

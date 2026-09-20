@@ -1,7 +1,8 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { type Fragrance, CREAM, GOLD, money, moneyExact } from "../lib/data";
-import type { BagLine } from "../lib/bag";
-import { sku as skuOf, FORMAT_BY_KEY } from "../lib/formats";
+import { type BagLine, toWire } from "../lib/bag";
+import { rowsFor, subtotalOf } from "../lib/bagRows";
+import type { Product } from "../lib/goods";
 import { navigate, paths } from "../lib/route";
 import { type CheckoutDelivery, type ShippingRate, etaLabel, quoteShipping } from "../lib/shipping";
 import { Arrow, Icon } from "./ui";
@@ -9,6 +10,7 @@ import { MONO, SERIF, btnGold, btnLink, micro } from "./styles";
 
 interface CheckoutProps {
   lines: BagLine[];
+  products: Product[];
   fragrances: Fragrance[];
   /** Signed-in email, used to prefill the contact field. */
   email?: string | null;
@@ -43,11 +45,9 @@ const blockLabel: CSSProperties = { ...micro, display: "block", marginBottom: 10
  * touches this site. Postage is quoted live from Australia Post as soon as a
  * postcode is typed, and re-quoted server-side before the charge.
  */
-export default function Checkout({ lines, fragrances, email, signedIn, onSignIn, busy, error, cancelled, onPlaceOrder }: CheckoutProps) {
-  const byId = useMemo(() => new Map(fragrances.map((f) => [f.id, f])), [fragrances]);
-  const rows = lines.map((l) => ({ line: l, frag: byId.get(l.fragranceId) })).filter((r): r is { line: BagLine; frag: Fragrance } => !!r.frag);
-  const unit = (r: { line: BagLine; frag: Fragrance }) => r.line.unitPrice ?? skuOf(r.frag, r.line.format).price;
-  const subtotal = rows.reduce((s, r) => s + unit(r) * r.line.qty, 0);
+export default function Checkout({ lines, fragrances, products, email, signedIn, onSignIn, busy, error, cancelled, onPlaceOrder }: CheckoutProps) {
+  const rows = useMemo(() => rowsFor(lines, fragrances, products), [lines, fragrances, products]);
+  const subtotal = subtotalOf(rows);
 
   const [method, setMethod] = useState<"auspost" | "alternate">("auspost");
   const [typedEmail, setTypedEmail] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export default function Checkout({ lines, fragrances, email, signedIn, onSignIn,
   // ── Live Australia Post quote ─────────────────────────────────────────────
   // A quote belongs to one bag and one postcode; change either and the old
   // answer simply stops matching, so there is nothing to reset.
-  const bagKey = lines.map((l) => `${l.fragranceId}:${l.format}:${l.qty}`).sort().join("|");
+  const bagKey = lines.map((l) => `${l.id}:${l.qty}`).sort().join("|");
   const quoteKey = method === "auspost" && !postageOff && /^\d{4}$/.test(postcode) && rows.length > 0 ? `${bagKey}@${postcode}` : null;
   const [quote, setQuote] = useState<{ key: string; status: "loading" | "ready" | "error"; rates?: ShippingRate[]; error?: string } | null>(null);
   const ship = quote?.key === quoteKey ? quote : null;
@@ -80,10 +80,7 @@ export default function Checkout({ lines, fragrances, email, signedIn, onSignIn,
     // Debounced, like typing a postcode: the last keystroke wins.
     const timer = setTimeout(() => {
       setQuote({ key: quoteKey, status: "loading" });
-      void quoteShipping(
-        lines.map((l) => ({ fragranceId: l.fragranceId, format: l.format, qty: l.qty, engraving: l.engraving, label: l.label })),
-        quoteKey.slice(quoteKey.lastIndexOf("@") + 1),
-      ).then((r) => {
+      void quoteShipping(toWire(lines), quoteKey.slice(quoteKey.lastIndexOf("@") + 1)).then((r) => {
         if (!active) return;
         if (r === null) {
           setPostageOff(true);
@@ -292,21 +289,18 @@ export default function Checkout({ lines, fragrances, email, signedIn, onSignIn,
         <aside style={{ border: "1px solid #e4ddd0", background: "#f7f4ee", padding: 22, display: "grid", gap: 14, position: "sticky", top: 100 }}>
           <span style={blockLabel}>Order summary</span>
           <div style={{ display: "grid", gap: 10 }}>
-            {rows.map(({ line, frag }) => {
-              const s = skuOf(frag, line.format);
-              return (
-                <div key={line.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-                  <span style={{ fontFamily: SERIF, fontSize: 17, color: CREAM, lineHeight: 1.25 }}>
-                    {frag.name} <span style={{ color: "rgba(20,18,14,0.68)" }}>× {line.qty}</span>
-                    <span style={{ display: "block", ...micro, fontSize: 8 }}>
-                      {line.label ? `${line.label} · ${s.def.label}` : FORMAT_BY_KEY[line.format].name}
-                      {line.engraving ? ` · “${line.engraving}”` : ""}
-                    </span>
+            {rows.map((row) => (
+              <div key={row.line.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+                <span style={{ fontFamily: SERIF, fontSize: 17, color: CREAM, lineHeight: 1.25 }}>
+                  {row.name} <span style={{ color: "rgba(20,18,14,0.68)" }}>× {row.qty}</span>
+                  <span style={{ display: "block", ...micro, fontSize: 8 }}>
+                    {row.detail}
+                    {row.engraving ? ` · “${row.engraving}”` : ""}
                   </span>
-                  <span style={{ fontFamily: MONO, fontSize: 14, color: CREAM }}>{money(unit({ line, frag }) * line.qty)}</span>
-                </div>
-              );
-            })}
+                </span>
+                <span style={{ fontFamily: MONO, fontSize: 14, color: CREAM }}>{money(row.unit * row.qty)}</span>
+              </div>
+            ))}
           </div>
 
           <div style={{ display: "grid", gap: 6, borderTop: "1px solid #e4ddd0", paddingTop: 14 }}>

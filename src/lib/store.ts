@@ -104,8 +104,15 @@ export async function recordCommit(
   }
 }
 
+/**
+ * An order row. Since the house sells more than fragrance it points at one of
+ * two catalogues: `fragrance_id` with a `format`, or `product_id` with a
+ * `variant`. Exactly one of the pair is set — the database enforces it.
+ */
 export interface CommitRow {
-  fragrance_id: string;
+  fragrance_id: string | null;
+  product_id?: string | null;
+  variant?: string | null;
   engraving: string | null;
   format?: string | null;
   size_ml: number;
@@ -131,7 +138,7 @@ export async function fetchMyCommits(userId: string, email?: string | null): Pro
     const mine = email ? `user_id.eq.${userId},and(user_id.is.null,user_email.ilike.${quoted})` : `user_id.eq.${userId}`;
     const { data, error } = await supabase
       .from("commits")
-      .select("fragrance_id, engraving, format, size_ml, charge_cents, status, created_at")
+      .select("fragrance_id, product_id, variant, engraving, format, size_ml, charge_cents, status, created_at")
       .or(mine)
       .order("created_at", { ascending: false });
     if (error) return null;

@@ -7,7 +7,7 @@
 // are recorded by the webhook (and by /api/stripe/confirm on return,
 // whichever comes first).
 
-import { type CheckoutLine, customerFor, getStripe, json, loadCatalogue, priceLines, readBody, serviceClient, siteUrl, userFromRequest, CURRENCY, route, notConfigured } from "../_lib/stripe.js";
+import { type CheckoutLine, customerFor, getStripe, json, loadCatalogue, loadGoods, priceLines, readBody, serviceClient, siteUrl, userFromRequest, CURRENCY, route, notConfigured } from "../_lib/stripe.js";
 import { auspostConfigured, quoteRates } from "../_lib/auspost.js";
 import { bagFits, chunkBag } from "../_lib/record.js";
 import { parcelFor } from "../_lib/parcel.js";
@@ -29,7 +29,8 @@ export default route("checkout", async function handler(req: any, res: any) {
 
   let priced;
   try {
-    priced = priceLines(lines, await loadCatalogue());
+    const [catalogue, goods] = await Promise.all([loadCatalogue(), loadGoods()]);
+    priced = priceLines(lines, catalogue, goods);
   } catch (e) {
     return json(res, 400, { error: e instanceof Error ? e.message : "Invalid bag" });
   }
@@ -77,7 +78,7 @@ export default route("checkout", async function handler(req: any, res: any) {
     if (!auspostConfigured()) return json(res, 503, { error: "Postage quotes are temporarily unavailable. Please try again shortly." });
     if (!serviceCode) return json(res, 400, { error: "Choose a postage option before continuing to payment." });
     const subtotalCents = priced.reduce((n, l) => n + l.unitCents * l.qty, 0);
-    const rates = await quoteRates(parcelFor(priced.map((l) => ({ format: l.format, qty: l.qty }))), postcode, subtotalCents);
+    const rates = await quoteRates(parcelFor(priced.map((l) => ({ format: l.format, grams: l.grams, qty: l.qty }))), postcode, subtotalCents);
     const chosen = rates.find((r) => r.code === serviceCode);
     if (!chosen) return json(res, 400, { error: "That postage option is no longer available — please recalculate." });
     shipping = { name: chosen.name, chargeCents: chosen.chargeCents, etaDays: chosen.etaDays };
@@ -87,7 +88,14 @@ export default route("checkout", async function handler(req: any, res: any) {
   // against the email they gave.
   const customer = user ? await customerFor(stripe, db, user) : undefined;
   const site = siteUrl(req);
-  const compact = priced.map((l) => ({ f: l.fragranceId, k: l.format, q: l.qty, e: l.engraving, s: l.sizeMl, u: l.unitCents }));
+  // What the webhook rebuilds the order from. A goods line writes `p`/`v`
+  // where a fragrance line writes `f`/`k`, so both fit the same array and an
+  // older reader still finds the fields it knows.
+  const compact = priced.map((l) =>
+    l.kind === "goods"
+      ? { p: l.productId, v: l.variant, q: l.qty, e: l.engraving, s: 0, u: l.unitCents }
+      : { f: l.fragranceId, k: l.format, q: l.qty, e: l.engraving, s: l.sizeMl, u: l.unitCents },
+  );
   // Refuse now rather than take the money and be unable to record what was
   // bought. Twenty chunks is roughly 180 bag lines, so this is a real outlier.
   if (!bagFits(compact)) {

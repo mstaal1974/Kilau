@@ -42,18 +42,42 @@ export interface Parcel {
 }
 
 /**
- * The parcel an order ships in: contents summed, then the smallest carton
- * whose volume holds them with room to pack. Anything larger than the biggest
- * carton still quotes on the large box with the real weight.
+ * A line as the parcel sees it: either a fragrance format, whose packed size is
+ * in the table above, or a piece of goods, which carries its own weight.
+ *
+ * Goods have no fixed carton, so a volume is derived from the weight at roughly
+ * the density of folded cloth in tissue (about 4.5 cm³ per gram, measured off
+ * the linen shirt). Jewellery and watches come out generous on volume and thin
+ * on weight, which is the safe direction: Australia Post charges on whichever
+ * of weight or cubic size is greater, so over-stating the box never under-
+ * charges the customer.
  */
-export function parcelFor(lines: { format: FormatKey; qty: number }[]): Parcel {
+export interface ParcelLine {
+  format?: FormatKey;
+  /** Packed weight of one unit, grams — a goods line. */
+  grams?: number;
+  qty: number;
+}
+
+/** cm³ per gram, folded and wrapped. */
+const GOODS_DENSITY = 4.5;
+
+export function parcelFor(lines: ParcelLine[]): Parcel {
   let contentsKg = 0;
   let contentsVol = 0;
   let longest = 0;
   for (const l of lines) {
-    const item = ITEM_PARCEL[l.format];
-    if (!item) continue;
     const qty = Math.max(1, l.qty);
+    if (l.grams != null && l.format == null) {
+      const kg = l.grams / 1000;
+      contentsKg += kg * qty;
+      contentsVol += l.grams * GOODS_DENSITY * qty;
+      // A folded garment is about the long side of the medium carton.
+      longest = Math.max(longest, l.grams >= 300 ? 31 : 22);
+      continue;
+    }
+    const item = l.format ? ITEM_PARCEL[l.format] : undefined;
+    if (!item) continue;
     contentsKg += item.kg * qty;
     contentsVol += item.l * item.w * item.h * qty;
     longest = Math.max(longest, item.l);

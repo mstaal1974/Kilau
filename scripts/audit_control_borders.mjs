@@ -9,7 +9,7 @@ const parse = (c) => { const m = String(c).match(/rgba?\(([\d.]+),\s*([\d.]+),\s
 const b = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const p = await b.newPage({ viewport: { width: 1400, height: 1200 } });
 const seen = new Set();
-for (const route of ['#/', '#/checkout', '#/find', '#/subscribe', '#/help', '#/fragrances', '#/discovery', '#/about']) {
+for (const route of ['#/', '#/checkout', '#/find', '#/subscribe', '#/help', '#/fragrances', '#/discovery', '#/about', '#/women', '#/beauty', '#/c/dresses', '#/p/sanur-slip-dress', '#/p/celuk-signet-ring']) {
   await p.goto((process.env.BASE_URL || 'http://127.0.0.1:4173/') + route, { waitUntil: 'networkidle' });
   await p.reload({ waitUntil: 'networkidle' });
   await p.waitForTimeout(600);

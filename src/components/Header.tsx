@@ -4,6 +4,7 @@ import { Icon } from "./ui";
 import { MONO, SERIF } from "./styles";
 import { navigate, paths } from "../lib/route";
 import { GOLD, CREAM } from "../lib/data";
+import { DEPARTMENTS, categoriesIn } from "../lib/goods";
 
 interface HeaderProps {
   bagCount: number;
@@ -27,26 +28,46 @@ const navLink: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-// SHOP mega-menu: fragrance first, format second — the architecture the brief
-// asks for. Gender stays as a filter rather than the primary axis.
-const BY_FRAGRANCE: { label: string; facet: string }[] = [
-  { label: "For Him", facet: "him" },
-  { label: "For Her", facet: "her" },
-  { label: "Unisex", facet: "unisex" },
-  { label: "Woody", facet: "woody" },
-  { label: "Fresh", facet: "fresh" },
-  { label: "Gourmand", facet: "gourmand" },
-  { label: "Floral", facet: "floral" },
-  { label: "Spicy", facet: "spicy" },
+// SHOP mega-menu. The house sells six departments now, so the menu is one
+// column per department rather than the old fragrance-first/format-second
+// split: that split is still right, but it belongs inside Fragrance, which is
+// where it has gone. Each column heads to the department page and lists its
+// categories, so the menu is the site map and not a second taxonomy to keep
+// in step with the first.
+interface MenuColumn {
+  label: string;
+  to: string;
+  items: { label: string; to: string }[];
+}
+
+const FRAGRANCE_COLUMN: MenuColumn = {
+  label: "Fragrance",
+  to: paths.fragrances,
+  items: [
+    { label: "Eau de Parfum", to: paths.fragrances },
+    { label: "10ml Discovery", to: paths.discovery },
+    { label: "30ml — Everyday Pour", to: paths.shop("30ml") },
+    { label: "50ml — Signature Pour", to: paths.shop("50ml") },
+    { label: "Car Diffusers", to: paths.car },
+    { label: "Body & Bath", to: paths.body },
+    { label: "Gift & Fragrance Sets", to: paths.shop("sets") },
+    { label: "Find your scent", to: paths.find() },
+  ],
+};
+
+const MENU: MenuColumn[] = [
+  ...DEPARTMENTS.map((d) => ({
+    label: d.name,
+    to: paths.department(d.slug),
+    items: categoriesIn(d.id).map((c) => ({ label: c.name, to: paths.category(c.slug) })),
+  })),
+  FRAGRANCE_COLUMN,
 ];
-const BY_FORMAT: { label: string; to: string }[] = [
-  { label: "Eau de Parfum", to: paths.fragrances },
-  { label: "10ml Discovery", to: paths.discovery },
-  { label: "30ml — Everyday Pour", to: paths.shop("30ml") },
-  { label: "50ml — Signature Pour", to: paths.shop("50ml") },
-  { label: "Car Diffusers", to: paths.car },
-  { label: "Body", to: paths.body },
-  { label: "Gift & Fragrance Sets", to: paths.shop("sets") },
+
+/** The departments that get their own place in the top bar. */
+const PRIMARY: { label: string; to: string }[] = [
+  ...DEPARTMENTS.map((d) => ({ label: d.short, to: paths.department(d.slug) })),
+  { label: "Fragrance", to: paths.fragrances },
 ];
 
 export default function Header({ bagCount, userEmail, isAdmin, onOpenBag, onSignIn, onSignOut }: HeaderProps) {
@@ -129,36 +150,34 @@ export default function Header({ bagCount, userEmail, isAdmin, onOpenBag, onSign
                     border: "1px solid #e4ddd0",
                     padding: "26px 30px 28px",
                     display: "grid",
-                    gridTemplateColumns: "180px 220px",
-                    gap: 40,
+                    gridTemplateColumns: "repeat(6, minmax(140px, 1fr))",
+                    gap: 30,
                     boxShadow: "0 30px 60px rgba(20,18,14,0.1)",
                   }}
                 >
-                  <div>
-                    <div style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: "0.3em", textTransform: "uppercase", color: GOLD, marginBottom: 14 }}>Shop by fragrance</div>
-                    {BY_FRAGRANCE.map((x) => (
-                      <button key={x.facet} role="menuitem" className="kb-navlink" onClick={() => navigate(paths.shop(x.facet))} style={{ ...navLink, display: "block", padding: "7px 0", fontFamily: SERIF, fontSize: 17, letterSpacing: 0, textTransform: "none", color: CREAM }}>
-                        {x.label}
+                  {MENU.map((col) => (
+                    <div key={col.label}>
+                      <button
+                        role="menuitem"
+                        className="kb-navlink"
+                        onClick={() => navigate(col.to)}
+                        style={{ ...navLink, display: "block", padding: 0, marginBottom: 12, fontSize: 8.5, letterSpacing: "0.3em", color: GOLD, whiteSpace: "normal", textAlign: "left" }}
+                      >
+                        {col.label}
                       </button>
-                    ))}
-                  </div>
-                  <div>
-                    <div style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: "0.3em", textTransform: "uppercase", color: GOLD, marginBottom: 14 }}>Shop by format</div>
-                    {BY_FORMAT.map((x) => (
-                      <button key={x.label} role="menuitem" className="kb-navlink" onClick={() => navigate(x.to)} style={{ ...navLink, display: "block", padding: "7px 0", fontFamily: SERIF, fontSize: 17, letterSpacing: 0, textTransform: "none", color: CREAM }}>
-                        {x.label}
-                      </button>
-                    ))}
-                  </div>
+                      {col.items.map((x) => (
+                        <button key={x.label} role="menuitem" className="kb-navlink" onClick={() => navigate(x.to)} style={{ ...navLink, display: "block", padding: "6px 0", fontFamily: SERIF, fontSize: 16, letterSpacing: 0, textTransform: "none", color: CREAM, whiteSpace: "normal", textAlign: "left" }}>
+                          {x.label}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.fragrances)}>Fragrances</button>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.discovery)}>Discovery</button>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.car)}>Car</button>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.body)}>Body &amp; Sets</button>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.subscribe())}>Subscribe</button>
-            <button className="kb-navlink" style={navLink} onClick={() => navigate(paths.find())}>Find your scent</button>
+            {PRIMARY.map((x) => (
+              <button key={x.label} className="kb-navlink" style={navLink} onClick={() => navigate(x.to)}>{x.label}</button>
+            ))}
             <button className="kb-navlink" style={{ ...navLink, color: GOLD }} onClick={() => navigate(paths.discover)}>Scent DNA</button>
           </nav>
 
@@ -295,17 +314,14 @@ function MobileMenu({
     >
       <nav style={{ padding: "22px 24px 40px", display: "grid", gap: 26 }} aria-label="Mobile">
         <div>
-          {[
-            { label: "Fragrances", to: paths.fragrances },
-            { label: "Discovery", to: paths.discovery },
-            { label: "Car", to: paths.car },
-            { label: "Body & Sets", to: paths.body },
-            { label: "Subscribe", to: paths.subscribe() },
-          ].map((x) => (
+          {PRIMARY.map((x) => (
             <button key={x.label} onClick={() => go(x.to)} style={item}>
               {x.label}
             </button>
           ))}
+          <button onClick={() => go(paths.subscribe())} style={item}>
+            Subscribe
+          </button>
           <button onClick={() => go(paths.find())} style={{ ...item, color: GOLD }}>
             Find your scent
           </button>
@@ -314,25 +330,22 @@ function MobileMenu({
           </button>
         </div>
 
-        <div>
-          <div style={heading}>Shop by fragrance</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px" }}>
-            {BY_FRAGRANCE.map((x) => (
-              <button key={x.facet} onClick={() => go(paths.shop(x.facet))} style={{ ...item, fontSize: 16, padding: "11px 0" }}>
-                {x.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div style={heading}>Shop by format</div>
-          {BY_FORMAT.map((x) => (
-            <button key={x.label} onClick={() => go(x.to)} style={{ ...item, fontSize: 16, padding: "11px 0" }}>
-              {x.label}
+        {/* Every department's categories, so the phone menu is the same site
+            map as the desktop one rather than a shorter, different site. */}
+        {MENU.map((col) => (
+          <div key={col.label}>
+            <button onClick={() => go(col.to)} style={{ ...heading, background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }}>
+              {col.label}
             </button>
-          ))}
-        </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 18px" }}>
+              {col.items.map((x) => (
+                <button key={x.label} onClick={() => go(x.to)} style={{ ...item, fontSize: 16, padding: "11px 0" }}>
+                  {x.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
 
         <div>
           <div style={heading}>Account</div>

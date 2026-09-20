@@ -6,7 +6,7 @@ import {
   addressLines,
   downloadCsv,
   forgetPass,
-  formatLabel,
+  itemLabel,
   itemCount,
   loadOrders,
   loadReturnAddress,
@@ -492,7 +492,7 @@ function OrderRow({
           <div key={`${i.fragrance_id}-${n}`} style={{ fontSize: 12.5, color: "#14120e", lineHeight: 1.45 }}>
             <span style={{ color: GOLD, fontFamily: "'Space Mono',monospace", fontSize: 11 }}>{i.qty}×</span>{" "}
             {i.name ?? i.fragrance_id}{" "}
-            <span style={{ ...label, fontSize: 9 }}>{formatLabel(i.format, i.size_ml)}</span>
+            <span style={{ ...label, fontSize: 9 }}>{itemLabel(i)}</span>
             {i.engraving && <div style={{ ...label, fontSize: 9, color: "rgba(138,98,21,1)" }}>Engraved · {i.engraving}</div>}
             {i.inspiration && <div style={{ fontSize: 10.5, color: "rgba(20,18,14,0.62)" }}>{i.inspiration}</div>}
           </div>
@@ -569,7 +569,7 @@ function PackList({ orders }: { orders: StaffOrder[] }) {
                   <td className="tick">☐</td>
                   <td className="qty">{i.qty}</td>
                   <td>
-                    {i.name ?? i.fragrance_id} <em>{formatLabel(i.format, i.size_ml)}</em>
+                    {i.name ?? i.product_id ?? i.fragrance_id} <em>{itemLabel(i)}</em>
                     {i.engraving && <div className="engrave">Engrave: {i.engraving}</div>}
                   </td>
                 </tr>

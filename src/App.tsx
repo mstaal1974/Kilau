@@ -7,7 +7,9 @@ import { demoShipments, subscribeShipments } from "./lib/catalogue";
 import { confirmStripeSession, stripeCheckout, stripeSubscribe } from "./lib/stripe";
 import type { CheckoutDelivery } from "./lib/shipping";
 import { currentRoute, parseHash, navigate, paths, type Route } from "./lib/route";
-import { subscribeBag, bagLines, bagOrders, discoveryIds, addToBag, clearBag, toggleDiscovery, clearDiscovery, type Order } from "./lib/bag";
+import { subscribeBag, bagLines, bagOrders, discoveryIds, addToBag, addProductToBag, clearBag, toggleDiscovery, clearDiscovery, toWire, type Order } from "./lib/bag";
+import { useProducts } from "./lib/goodsStore";
+import { type Product, categoryBySlug, departmentBySlug, productBySlug, variantLabel, variantOf, DEPARTMENT_BY_ID } from "./lib/goods";
 import { FORMAT_BY_KEY, DISCOVERY_BOX_SIZE, DISCOVERY_BOX_PRICE } from "./lib/formats";
 import AuthModal from "./components/AuthModal";
 import PasswordReset from "./components/PasswordReset";
@@ -23,6 +25,9 @@ import FindYourScent from "./components/FindYourScent";
 import MoodShop from "./components/MoodShop";
 import RangeBanners from "./components/RangeBanners";
 import Collection from "./components/Collection";
+import GoodsCollection, { DepartmentPage } from "./components/goods/GoodsCollection";
+import GoodsDetail from "./components/goods/GoodsDetail";
+import DepartmentsBand from "./components/goods/DepartmentsBand";
 import Discovery from "./components/Discovery";
 import Help from "./components/Help";
 import About from "./components/About";
@@ -60,6 +65,7 @@ export default function App() {
   const [subError, setSubError] = useState<string | null>(null);
 
   const { fragrances, reload } = useFragrances();
+  const { products } = useProducts();
   const auth = useAuth();
   const isAdmin = useIsAdmin(auth.user);
   const lines = useSyncExternalStore(subscribeBag, bagLines);
@@ -104,6 +110,16 @@ export default function App() {
     setBagOpen(true);
   }, [vip]);
 
+  const addGoods = useCallback((product: Product, variant: string, qty: number, engraving: string | null) => {
+    if (product.vipOnly && !vip) {
+      navigate(paths.about);
+      return;
+    }
+    addProductToBag(product.id, variant, qty, engraving);
+    setPlaced(null);
+    setBagOpen(true);
+  }, [vip]);
+
   const addBox = useCallback((frags: Fragrance[]) => {
     if (frags.length !== DISCOVERY_BOX_SIZE) return;
     const each = Math.round(DISCOVERY_BOX_PRICE / DISCOVERY_BOX_SIZE);
@@ -128,10 +144,7 @@ export default function App() {
       // A real deployment always pays through Stripe. If that can't start we
       // stop without recording an unpaid order.
       if (auth.configured) {
-        const r = await stripeCheckout(
-          lines.map((l) => ({ fragranceId: l.fragranceId, format: l.format, qty: l.qty, engraving: l.engraving, label: l.label })),
-          delivery,
-        );
+        const r = await stripeCheckout(toWire(lines), delivery);
         if (r?.ok) {
           window.location.assign(r.data.url);
           return;
@@ -294,9 +307,24 @@ export default function App() {
     if (usingRemote) {
       return (remoteCommits ?? [])
         .map((row): AccountOrder | null => {
+          // One row points at one of the two catalogues; which one decides the
+          // name, the link and whether there is a format to show.
+          if (row.product_id) {
+            const product = products.find((p) => p.id === row.product_id);
+            if (!product) return null;
+            const variant = row.variant ? variantOf(product, row.variant) : null;
+            return {
+              item: { id: product.id, name: product.name, href: paths.goods(product.slug) },
+              formatLabel: variant && product.variantKind !== "one" ? `${variantLabel(product.variantKind)} ${variant.label}` : product.tagline,
+              chargeCents: row.charge_cents ?? undefined,
+              engraving: row.engraving,
+              status: row.status,
+              placedAt: row.created_at,
+            };
+          }
           const frag = fragrances.find((f) => f.id === row.fragrance_id);
           return frag
-            ? { frag, sizeMl: row.size_ml, formatLabel: formatLabel(row.format, row.size_ml), chargeCents: row.charge_cents ?? undefined, engraving: row.engraving, status: row.status, placedAt: row.created_at, ...shipmentFor(frag.id) }
+            ? { item: { id: frag.id, name: frag.name, href: paths.product(frag.slug) }, sizeMl: row.size_ml, formatLabel: formatLabel(row.format, row.size_ml), chargeCents: row.charge_cents ?? undefined, engraving: row.engraving, status: row.status, placedAt: row.created_at, ...shipmentFor(frag.id) }
             : null;
         })
         .filter((r): r is AccountOrder => r !== null);
@@ -305,11 +333,11 @@ export default function App() {
       .map((o): AccountOrder | null => {
         const frag = fragrances.find((f) => f.id === o.fragranceId);
         return frag
-          ? { frag, sizeMl: o.sizeMl, formatLabel: formatLabel(o.format, o.sizeMl), qty: o.qty, chargeCents: o.chargeCents * o.qty, engraving: o.engraving, status: "captured", placedAt: new Date(o.createdAt).toISOString(), ...shipmentFor(frag.id) }
+          ? { item: { id: frag.id, name: frag.name, href: paths.product(frag.slug) }, sizeMl: o.sizeMl, formatLabel: formatLabel(o.format, o.sizeMl), qty: o.qty, chargeCents: o.chargeCents * o.qty, engraving: o.engraving, status: "captured", placedAt: new Date(o.createdAt).toISOString(), ...shipmentFor(frag.id) }
           : null;
       })
       .filter((r): r is AccountOrder => r !== null);
-  }, [usingRemote, remoteCommits, orders, fragrances, shipmentFor]);
+  }, [usingRemote, remoteCommits, orders, fragrances, products, shipmentFor]);
 
   const demoAdminCommits: AdminCommitRow[] = useMemo(
     () => orders.map((o) => ({ id: o.id, fragrance_id: o.fragranceId, format: o.format, size_ml: o.sizeMl, charge_cents: o.chargeCents * o.qty, engraving: o.engraving, status: "authorized", created_at: "" })),
@@ -331,6 +359,7 @@ export default function App() {
     <BagDrawer
       lines={lines}
       fragrances={fragrances}
+      products={products}
       placed={placed}
       onClose={() => setBagOpen(false)}
       onCheckout={() => {
@@ -396,6 +425,7 @@ export default function App() {
           <FindYourScent fragrances={fragrances} onQuickView={openQuick} userEmail={auth.user?.email} />
           <MoodShop fragrances={fragrances} onQuickView={openQuick} />
           <SubscribeBand />
+          <DepartmentsBand products={products} />
           <RangeBanners />
         </main>
       )}
@@ -412,6 +442,33 @@ export default function App() {
           onToggleDiscovery={onToggleDiscovery}
         />
       )}
+
+      {route.view === "department" && (() => {
+        const department = departmentBySlug(route.slug);
+        return department ? (
+          <DepartmentPage key={department.id} department={department} products={products} vip={vip} />
+        ) : (
+          <NotFound title="Department not found." />
+        );
+      })()}
+
+      {route.view === "category" && (() => {
+        const category = categoryBySlug(route.slug);
+        return category ? (
+          <GoodsCollection key={category.id} department={DEPARTMENT_BY_ID[category.department]} category={category} products={products} vip={vip} />
+        ) : (
+          <NotFound title="Category not found." />
+        );
+      })()}
+
+      {route.view === "goods" && (() => {
+        const product = productBySlug(products, route.slug);
+        return product ? (
+          <GoodsDetail key={product.id} product={product} products={products} vip={vip} onAdd={addGoods} />
+        ) : (
+          <NotFound title="Piece not found." />
+        );
+      })()}
 
       {route.view === "discovery" && (
         <Discovery fragrances={fragrances} vip={vip} discoveryIds={boxIds} onToggleDiscovery={onToggleDiscovery} onAddBox={addBox} onQuickView={openQuick} />
@@ -448,6 +505,7 @@ export default function App() {
         <Checkout
           lines={lines}
           fragrances={fragrances}
+          products={products}
           email={auth.user?.email ?? null}
           signedIn={!!auth.user}
           onSignIn={() => {
@@ -466,14 +524,7 @@ export default function App() {
       {route.view === "product" && selected && (
         <ProductDetail key={selected.slug} frag={selected} fragrances={fragrances} vip={vip} onAdd={add} onQuickView={openQuick} />
       )}
-      {route.view === "product" && !selected && (
-        <main style={{ maxWidth: 1340, margin: "0 auto", padding: "120px 32px", textAlign: "center" }}>
-          <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontWeight: 300, fontSize: 48, color: "#14120e" }}>Fragrance not found.</h1>
-          <button className="kb-cta" onClick={() => navigate(paths.fragrances)} style={{ marginTop: 28, background: "#c8a063", color: "#14120e", border: 0, cursor: "pointer", height: 48, padding: "0 26px", fontSize: 11, letterSpacing: "0.24em", textTransform: "uppercase", fontWeight: 600 }}>
-            Browse fragrances
-          </button>
-        </main>
-      )}
+      {route.view === "product" && !selected && <NotFound title="Fragrance not found." />}
 
       {route.view === "help" && <Help />}
       {route.view === "about" && <About vip={vip} signedIn={!!auth.user} onJoin={joinVip} />}
@@ -482,7 +533,7 @@ export default function App() {
         <MyOrders
           orders={accountOrders}
           loading={usingRemote && remoteCommits === null}
-          onOpen={(slug) => navigate(paths.product(slug))}
+          onOpen={(href) => navigate(href)}
           onBackToVault={() => navigate(paths.fragrances)}
           subscriptionSlot={<SubscriptionPanel subscriptions={subscriptions} fragrances={fragrances} loading={subsLoading} onChanged={reloadSubs} />}
           preferencesSlot={<PreferencesPanel consents={consents} taste={taste} onChange={(c) => saveConsents(c)} />}
@@ -553,5 +604,27 @@ export default function App() {
 
       <ChatWidget fragrances={fragrances} onOpenProduct={(slug) => navigate(paths.product(slug))} profile={aiProfile} />
     </div>
+  );
+}
+
+/**
+ * The dead end. A link that no longer resolves — a discontinued piece, a
+ * mistyped slug — lands somewhere that says so and offers the way back in,
+ * rather than bouncing silently to the homepage.
+ */
+function NotFound({ title }: { title: string }) {
+  return (
+    <main data-screen-label={title} style={{ maxWidth: 1340, margin: "0 auto", padding: "120px 32px", textAlign: "center" }}>
+      <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontWeight: 400, fontSize: 48, color: "#14120e" }}>{title}</h1>
+      <p style={{ marginTop: 12, fontSize: 14, color: "rgba(20,18,14,0.74)" }}>It may have sold out, or the link may have changed.</p>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 28 }}>
+        <button className="kb-cta" onClick={() => navigate(paths.department("women"))} style={{ background: "#c8a063", color: "#14120e", border: 0, cursor: "pointer", height: 48, padding: "0 26px", fontSize: 11, letterSpacing: "0.24em", textTransform: "uppercase", fontWeight: 600 }}>
+          Shop clothing
+        </button>
+        <button className="kb-ghost" onClick={() => navigate(paths.fragrances)} style={{ background: "none", color: "#14120e", border: "1px solid #8a6215", cursor: "pointer", height: 48, padding: "0 26px", fontSize: 11, letterSpacing: "0.24em", textTransform: "uppercase", fontWeight: 600 }}>
+          Browse fragrances
+        </button>
+      </div>
+    </main>
   );
 }

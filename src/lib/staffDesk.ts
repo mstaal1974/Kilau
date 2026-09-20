@@ -9,7 +9,10 @@ import { FORMAT_BY_KEY } from "./formats";
 import type { FormatKey } from "./data";
 
 export interface StaffItem {
-  fragrance_id: string;
+  fragrance_id: string | null;
+  product_id?: string | null;
+  /** Which size, shade or strap — a goods line. */
+  variant?: string | null;
   name: string | null;
   inspiration: string | null;
   format: FormatKey;
@@ -171,6 +174,16 @@ export function formatLabel(key: FormatKey, sizeMl: number): string {
   return FORMAT_BY_KEY[key]?.label ?? `${sizeMl}ml`;
 }
 
+/**
+ * What to write next to a line on the packing sheet. A fragrance line is a
+ * format; a goods line is the variant code that was bought, which is what is
+ * printed on the box in the stockroom. Without this a dress printed as "0ml".
+ */
+export function itemLabel(i: StaffItem): string {
+  if (i.product_id) return i.variant ?? "One size";
+  return formatLabel(i.format, i.size_ml);
+}
+
 export function itemCount(order: StaffOrder): number {
   return order.items.reduce((n, i) => n + (i.qty || 1), 0);
 }
@@ -241,7 +254,7 @@ export function ordersCsv(orders: StaffOrder[]): string {
       o.ship_city,
       o.ship_region,
       o.ship_postcode,
-      o.items.map((i) => `${i.qty} x ${i.name ?? i.fragrance_id} ${formatLabel(i.format, i.size_ml)}`).join("; "),
+      o.items.map((i) => `${i.qty} x ${i.name ?? i.product_id ?? i.fragrance_id} ${itemLabel(i)}`).join("; "),
       o.packed ? "yes" : "no",
       o.tracking_number,
       o.ship_notes,

@@ -5,11 +5,14 @@ import { MONO, SERIF } from "./styles";
 import { navigate, paths } from "../lib/route";
 import { joinInnerCircle } from "../lib/profile";
 import { GOLD, CREAM } from "../lib/data";
+import { DEPARTMENTS } from "../lib/goods";
 
 const LINKS: { label: string; to: string }[] = [
+  ...DEPARTMENTS.map((d) => ({ label: d.short, to: paths.department(d.slug) })),
+  { label: "Fragrance", to: paths.fragrances },
   { label: "Scent DNA", to: paths.discover },
   { label: "About", to: paths.about },
-  { label: "Shopping help", to: paths.help },
+  { label: "Help", to: paths.help },
 ];
 
 export default function Footer() {
