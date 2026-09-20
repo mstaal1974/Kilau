@@ -355,15 +355,22 @@ export function json(res: any, status: number, body: unknown) {
  * Vercel's plain-text FUNCTION_INVOCATION_FAILED page the app can't read.
  * The console shows `detail` to admins; customers see `error` only.
  */
-export function route(name: string, handler: (req: any, res: any) => Promise<unknown>) {
+export function route(
+  name: string,
+  handler: (req: any, res: any) => Promise<unknown>,
+  // Most of these routes are the checkout path, so that is the default. A
+  // route that is not — the supplier queue, the setup report — says so, since
+  // "Checkout could not start" on the admin console is a misleading error.
+  failure = "Checkout could not start",
+) {
   return async (req: any, res: any) => {
     try {
       await handler(req, res);
     } catch (e) {
       const err = e as { message?: string; type?: string; code?: string; statusCode?: number };
-      console.error(`[stripe/${name}]`, e);
+      console.error(`[${name}]`, e);
       const detail = [err.type, err.code, err.message].filter(Boolean).join(" · ") || "unknown error";
-      json(res, 500, { error: "Checkout could not start", detail: `${name}: ${detail}` });
+      json(res, 500, { error: failure, detail: `${name}: ${detail}` });
     }
   };
 }

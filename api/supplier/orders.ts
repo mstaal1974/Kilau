@@ -176,4 +176,4 @@ export default route("supplier/orders", async function handler(req: any, res: an
   }
 
   return json(res, 405, { error: "Method not allowed" });
-});
+}, "The dropship queue is unavailable");

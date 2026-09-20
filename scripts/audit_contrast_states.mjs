@@ -149,6 +149,50 @@ if (await start.count()) {
 }
 await page.close();
 
+// ── The admin console ───────────────────────────────────────────────────────
+// Reached only behind a sign-in, so it never appears in the route sweep. In
+// the offline demo any signed-in user is an admin, which is enough to render
+// every panel. The setup report is stubbed so the full range of states — a
+// satisfied check, a warning, a missing one — is actually on screen.
+const admin = await browser.newPage({ viewport: { width: 1400, height: 1200 }, deviceScaleFactor: 1 });
+await admin.route('**/api/admin/setup', (r) =>
+  r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      checkedAt: new Date().toISOString(),
+      database: { url: true, anonKey: true, serviceKey: true, tables: { products: true, supplierOrders: false, scentProfiles: true, fulfilment: true } },
+      payments: { secretKey: true, testMode: true, webhookSecret: false, currency: 'AUD', siteUrl: false },
+      postage: { ready: true, pacKey: true, fromPostcode: '4000' },
+      dropship: { name: 'alidrop', canDispatch: false, missing: ['SUPPLIER_API_BASE', 'SUPPLIER_ORDER_PATH'], dryRun: false, base: false, orderPath: false, apiKey: false },
+      ai: { key: true },
+    }),
+  }),
+);
+await admin.goto(BASE, { waitUntil: 'networkidle' });
+await admin.evaluate(() => localStorage.setItem('kb:demo-user', JSON.stringify({ id: 'demo', email: 'owner@kilaubali.com' })));
+await admin.goto(BASE + '#/admin', { waitUntil: 'networkidle' });
+await admin.reload({ waitUntil: 'networkidle' });
+await admin.waitForTimeout(700);
+for (const name of ['Setup', 'Dropship', 'Catalogue & Inventory', 'Fulfillment']) {
+  const tab = admin.getByRole('button', { name: new RegExp(`^${name.replace(/[&]/g, '\\$&')}$`) }).first();
+  if (!(await tab.count())) continue;
+  await tab.click().catch(() => {});
+  await admin.waitForTimeout(900);
+  total += await check(admin, `admin: ${name}`);
+  await admin.evaluate(() => window.scrollTo(0, 900));
+  await admin.waitForTimeout(300);
+  total += await check(admin, `admin: ${name} (scrolled)`);
+  await admin.evaluate(() => window.scrollTo(0, 0));
+}
+// The gate itself — where an admin lands before signing in.
+await admin.evaluate(() => localStorage.removeItem('kb:demo-user'));
+await admin.goto(BASE + '#/admin', { waitUntil: 'networkidle' });
+await admin.reload({ waitUntil: 'networkidle' });
+await admin.waitForTimeout(600);
+total += await check(admin, 'admin sign-in');
+await admin.close();
+
 // ── The phone layout ────────────────────────────────────────────────────────
 const m = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
 for (const route of ['#/', '#/fragrances', '#/checkout', '#/subscribe', '#/discover', '#/women', '#/beauty', '#/c/dresses', '#/p/sanur-slip-dress', '#/p/kilau-satin-lipstick']) {

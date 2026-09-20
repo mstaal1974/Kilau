@@ -552,9 +552,41 @@ export default function App() {
         (isAdmin ? (
           <AdminConsole fragrances={fragrances} configured={auth.configured} onReload={reload} demoCommits={demoAdminCommits} />
         ) : (
-          <main style={{ maxWidth: 1340, margin: "0 auto", padding: "120px 32px", textAlign: "center" }}>
-            <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontWeight: 300, fontSize: 44, color: "#14120e" }}>Admins only.</h1>
-            <p style={{ marginTop: 12, fontSize: 13, color: "rgba(20,18,14,0.68)" }}>Sign in with an admin account to manage the atelier.</p>
+          // Reached by typing #/admin, so it is where an admin arrives before
+          // signing in. It used to say "sign in" and give you nothing to sign
+          // in with; the button is the whole point of the screen.
+          <main data-screen-label="Admin sign in" style={{ maxWidth: 680, margin: "0 auto", padding: "110px 32px", textAlign: "center" }}>
+            <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontWeight: 400, fontSize: 44, color: "#14120e" }}>
+              {auth.user ? "Admins only." : "The Console."}
+            </h1>
+            <p style={{ marginTop: 12, fontSize: 14, lineHeight: 1.7, color: "rgba(20,18,14,0.74)" }}>
+              {auth.user
+                ? `${auth.user.email} isn't an admin on this deployment. Ask an existing admin to add the account, or sign in with one that is.`
+                : "Sign in with an admin account to manage the catalogue, orders, dropshipping and setup."}
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 26 }}>
+              <button
+                className="kb-cta"
+                onClick={() => (auth.user ? void auth.signOut() : setAuthOpen(true))}
+                style={{ background: "#c8a063", color: "#14120e", border: 0, cursor: "pointer", height: 48, padding: "0 26px", fontSize: 11, letterSpacing: "0.24em", textTransform: "uppercase", fontWeight: 600 }}
+              >
+                {auth.user ? "Sign in as someone else" : "Sign in"}
+              </button>
+              <button
+                className="kb-ghost"
+                onClick={() => navigate(paths.staff)}
+                style={{ background: "none", color: "#14120e", border: "1px solid #8a6215", cursor: "pointer", height: 48, padding: "0 26px", fontSize: 11, letterSpacing: "0.24em", textTransform: "uppercase", fontWeight: 600 }}
+              >
+                Staff order desk
+              </button>
+            </div>
+            {!auth.configured && (
+              <p style={{ marginTop: 22, fontSize: 12.5, lineHeight: 1.7, color: "rgba(20,18,14,0.74)" }}>
+                This deployment has no Supabase connection, so there are no accounts to sign in with. Setting{" "}
+                <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> is the first step — the console's
+                Setup tab lists the rest.
+              </p>
+            )}
           </main>
         ))}
 

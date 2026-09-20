@@ -284,6 +284,35 @@ Earlier foundations, still in place:
   `enroll_subscriber` RPC) and unlocks VIP-only batches.
 - **Footer** + film-grain overlay, responsive breakpoints, and reduced-motion support.
 
+## Setup
+
+Most of what decides whether this shop can actually trade lives in environment
+variables on Vercel and in migrations in Supabase, and none of it used to be
+visible from inside the app — which is how a storefront ends up looking
+finished while quietly unable to take a payment.
+
+**Admin Console → Setup** is that list. It groups every integration — database,
+payments, postage, dropshipping, AI, email, shopfront details — and for each
+one says whether it is ready, what it switches on, what breaks without it, the
+exact variable names, and where to set them. It also asks the database which
+migrations have landed, since a missing table is the other half of "why doesn't
+this work" and cannot be read off an environment variable.
+
+It reports **presence, never values**. `/api/admin/setup` is admin-gated and
+answers with a boolean per secret plus the handful of settings that are not
+secret in the first place (a currency, a from-postcode, the supplier name). No
+key, token or URL that could be replayed ever reaches the browser.
+
+Two states worth knowing: a `sk_test_` Stripe key is flagged rather than
+counted as ready, because a shop that takes no money looks identical to one
+that does until launch day; and the shopfront checks (`VITE_*`) are read
+straight from the bundle, so they still render when the server route is absent
+— which is exactly when somebody is mid-setup.
+
+`#/admin` signed out is now a sign-in screen rather than a dead end: it offers
+sign-in, a link to the staff order desk, and — when Supabase is unconfigured —
+says which two variables to set first.
+
 ## Dropshipping (AliDrop)
 
 **AliDrop publishes no developer API.** It is distributed as an app for
@@ -398,6 +427,7 @@ src/
 │   ├── scentLearning.ts   Signals, the merge maths, and what changed
 │   ├── goods.ts           Departments, categories, the goods seed, variant pricing
 │   ├── dropship.ts        The supplier queue, from the admin console's side
+│   ├── setup.ts           What is wired up: the checks, and what each one turns on
 │   ├── goodsStore.ts      useProducts() — the products table, with the seed as fallback
 │   ├── bag.ts             Bag lines (fragrance | goods), Discovery Box picks (localStorage)
 │   ├── bagRows.ts         Resolves a bag line against either catalogue for display
@@ -433,6 +463,7 @@ src/
 api/
 ├── _lib/goods.ts          Server mirror of the goods catalogue (pricing, stock, weights)
 ├── _lib/supplier.ts       The dropship hand-off: payload, queue, config-driven transport
+├── admin/setup.ts         Admin-only: which integrations are configured (presence, never values)
 ├── supplier/orders.ts     Admin-only: the queue, its CSV, dispatch and mark-off
 ├── chat.ts                Vercel serverless proxy → Claude (streams the concierge reply)
 ├── scent-ai.ts            The Scent DNA AI layer — six operations, one cached prefix
